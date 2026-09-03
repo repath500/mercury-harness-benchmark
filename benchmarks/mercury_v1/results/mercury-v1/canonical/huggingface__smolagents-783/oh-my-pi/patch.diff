@@ -1,0 +1,62 @@
+diff --git a/src/smolagents/agents.py b/src/smolagents/agents.py
+index 1a42b9e..25a82f6 100644
+--- a/src/smolagents/agents.py
++++ b/src/smolagents/agents.py
+@@ -244,6 +244,9 @@ class MultiStepAgent:
+     def _setup_tools(self, tools, add_base_tools):
+         assert all(isinstance(tool, Tool) for tool in tools), "All elements must be instance of Tool (or a subclass)"
+         self.tools = {tool.name: tool for tool in tools}
++        # Only add default FinalAnswerTool if user hasn't provided one
++        if "final_answer" not in self.tools:
++            self.tools["final_answer"] = FinalAnswerTool()
+         if add_base_tools:
+             self.tools.update(
+                 {
+@@ -252,7 +255,6 @@ class MultiStepAgent:
+                     if name != "python_interpreter" or self.__class__.__name__ == "ToolCallingAgent"
+                 }
+             )
+-        self.tools["final_answer"] = FinalAnswerTool()
+ 
+     def _validate_tools_and_managed_agents(self, tools, managed_agents):
+         tool_and_managed_agent_names = [tool.name for tool in tools]
+diff --git a/tests/test_agents.py b/tests/test_agents.py
+index f466413..fca6d06 100644
+--- a/tests/test_agents.py
++++ b/tests/test_agents.py
+@@ -31,7 +31,7 @@ from smolagents.agents import (
+     ToolCallingAgent,
+     populate_template,
+ )
+-from smolagents.default_tools import DuckDuckGoSearchTool, PythonInterpreterTool, VisitWebpageTool
++from smolagents.default_tools import DuckDuckGoSearchTool, PythonInterpreterTool, Tool, VisitWebpageTool
+ from smolagents.memory import PlanningStep
+ from smolagents.models import (
+     ChatMessage,
+@@ -461,10 +461,26 @@ class AgentTests(unittest.TestCase):
+         agent = CodeAgent(tools=[], model=fake_code_model, add_base_tools=True)
+         assert len(agent.tools) == 3  # added final_answer tool + search + visit_webpage
+ 
++        # check that python_interpreter base tool gets added to ToolCallingAgent
++        agent = ToolCallingAgent(tools=[], model=fake_code_model, add_base_tools=True)
+         # check that python_interpreter base tool gets added to ToolCallingAgent
+         agent = ToolCallingAgent(tools=[], model=fake_code_model, add_base_tools=True)
+         assert len(agent.tools) == 4  # added final_answer tool + search + visit_webpage
+ 
++        # Test that user-provided final_answer tool is preserved
++        class CustomFinalAnswerTool(Tool):
++            name = "final_answer"
++            description = "Custom final answer"
++            inputs = {"answer": {"type": "string", "description": "The final answer"}}
++            output_type = "string"
++
++            def forward(self, answer: str):
++                return f"Custom: {answer}"
++
++        agent = CodeAgent(tools=[CustomFinalAnswerTool()], model=fake_code_model)
++        assert isinstance(agent.tools["final_answer"], CustomFinalAnswerTool)
++        assert agent.tools["final_answer"].forward("test") == "Custom: test"
++
+     def test_function_persistence_across_steps(self):
+         agent = CodeAgent(
+             tools=[],

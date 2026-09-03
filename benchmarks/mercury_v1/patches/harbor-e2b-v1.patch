@@ -1,0 +1,65 @@
+diff --git a/src/harbor/environments/e2b.py b/src/harbor/environments/e2b.py
+index c45f105..b6f582c 100644
+--- a/src/harbor/environments/e2b.py
++++ b/src/harbor/environments/e2b.py
+@@ -101,13 +101,16 @@ class E2BEnvironment(BaseEnvironment):
+ 
+         self._workdir = parse_dockerfile_workdir(self._environment_definition_path)
+ 
+         self._sandbox: AsyncSandbox | None = None
+         env_hash = self.environment_id[:SNAPSHOT_HASH_LEN]
+-        self._template_name = f"{environment_name}__{env_hash}".replace(
+-            "/", "__"
+-        ).replace(".", "-")
++        # Current E2B template resolution requires an explicit tag; an
++        # untagged sandbox request is resolved as the legacy ``default`` tag.
++        self._template_name = (
++            f"{environment_name}__{env_hash}".replace("/", "__").replace(".", "-")
++            + ":latest"
++        )
+ 
+     @staticmethod
+     @override
+     def type() -> EnvironmentType:
+         return EnvironmentType.E2B
+@@ -226,11 +229,13 @@ class E2BEnvironment(BaseEnvironment):
+ 
+         self._sandbox = await AsyncSandbox.create(
+             template=self._template_name,
+             metadata=metadata,
+             envs=self._startup_env(),
+-            timeout=86_400,
++            # Current E2B accounts/API reject leases longer than one hour.
++            # Keep this aligned with the V1 agent timeout and the E2B limit.
++            timeout=3_600,
+             allow_internet_access=(
+                 self.network_policy.network_mode != NetworkMode.NO_NETWORK
+             ),
+             network=self._sandbox_create_network_options(),
+         )
+diff --git a/src/harbor/trial/single_step.py b/src/harbor/trial/single_step.py
+index 35a9de3..6b11b67 100644
+--- a/src/harbor/trial/single_step.py
++++ b/src/harbor/trial/single_step.py
+@@ -82,10 +82,21 @@ class SingleStepTrial(Trial):
+                 load=self._load_trajectory is not None,
+             )
+         except (AgentTimeoutError, NonZeroAgentExitCodeError) as exc:
+             self._record_exception(exc)
+         finally:
++            # Preserve the final candidate patch in the mounted agent logs
++            # before Harbor downloads them. This keeps patch statistics
++            # available for non-custom CLI agents as well as custom adapters.
++            try:
++                await self.agent_environment.exec(
++                    "mkdir -p /logs/agent && "
++                    "git -C /testbed diff --binary > /logs/agent/patch.diff 2>/dev/null || true",
++                    user="root",
++                )
++            except Exception:
++                pass
+             await self._sync_agent_output(self.result)
+ 
+     async def _run_verifier(self) -> None:
+         if self.config.verifier.disable:
+             return

@@ -1,0 +1,115 @@
+diff --git a/docs/settings_files.md b/docs/settings_files.md
+index 6cf9a6f..7540bfc 100644
+--- a/docs/settings_files.md
++++ b/docs/settings_files.md
+@@ -216,6 +216,61 @@ distinct environment.
+     It is also possible to switch environments programmatically passing
+     `env="development"` to `Dynaconf` class on instantiation.
+ 
++### Bypassing environment processing with `load_file(env=False)`
++
++If you want to load a configuration file without any environment-based filtering
++or layering, you can use the `env=False` parameter when calling `load_file()`.
++This loads all sections from the file directly, regardless of the
++`ENVIRONMENTS_FOR_DYNACONF` setting and which environment is currently active.
++
++**Available since version 3.2.11.**
++
++```python
++settings = Dynaconf(environments=True)
++settings.load_file("config.toml", env=False)
++```
++
++When `env=False` is used:
++- All sections from the file (e.g., `[default]`, `[development]`, `[production]`)
++  are loaded as nested dictionaries
++- Top-level variables (outside any section) are accessible directly
++- The current environment setting is ignored
++
++Example:
++
++```toml
++# config.toml
++[default]
++api_url = "default_url"
++
++[development]
++api_url = "dev_url"
++debug = true
++
++[production]
++api_url = "prod_url"
++debug = false
++```
++
++```python
++settings = Dynaconf(environments=True, ENV_FOR_DYNACONF="production")
++
++# Without env=False: only production section is loaded
++settings.load_file("config.toml")
++settings.api_url  # "prod_url"
++
++# With env=False: all sections are loaded
++settings.load_file("config.toml", env=False)
++settings.PRODUCTION.api_url  # "prod_url"
++settings.DEVELOPMENT.api_url  # "dev_url"
++settings.api_url  # None (top-level access doesn't work for section keys)
++```
++
++This is useful when:
++- You want to load a file with multiple environment sections
++- You have files that don't use the standard `[environment]` section format
++- You want consistent behavior regardless of your global environment settings
++
+ ### YAML Caveats
+ 
+ #### Nonetypes
+diff --git a/dynaconf/base.py b/dynaconf/base.py
+index 561ac16..6b1c634 100644
+--- a/dynaconf/base.py
++++ b/dynaconf/base.py
+@@ -1314,7 +1314,10 @@ class Settings:
+         - CWD
+ 
+         :param path: A single filename, a glob or a file list
+-        :param env: Which env to load from file (default current_env)
++        :param env: Which env to load from file (default current_env).
++            Set to ``False`` to bypass environment processing and load all
++            variables from the file directly without any environment filtering.
++            This was added in version 3.2.11.
+         :param silent: Should raise errors?
+         :param key: Load a single key?
+         :param validate: Should trigger validation?
+@@ -1327,7 +1330,8 @@ class Settings:
+         if validate is empty:
+             validate = self.get("VALIDATE_ON_UPDATE_FOR_DYNACONF")
+ 
+-        env = (env or self.current_env).upper()
++        # Map env=False to a special marker for environment-agnostic loading
++        env = "_envless" if env is False else (env or self.current_env).upper()
+ 
+         # Using inspect take the filename and line number of the caller
+         # to be used in the source_metadata
+diff --git a/dynaconf/loaders/base.py b/dynaconf/loaders/base.py
+index e0ea23b..e21106c 100644
+--- a/dynaconf/loaders/base.py
++++ b/dynaconf/loaders/base.py
+@@ -35,6 +35,8 @@ class BaseLoader:
+         """Instantiates a loader for different sources"""
+         self.obj = obj
+         self.env = env or obj.current_env
++        # Track if env-less loading is requested (env=False from load_file)
++        self._envless = env == "_envless"
+         self.identifier = identifier
+         self.extensions = extensions
+         self.file_reader = file_reader
+@@ -78,7 +80,8 @@ class BaseLoader:
+ 
+         source_data = self.get_source_data(files)
+ 
+-        if self.obj.get("ENVIRONMENTS_FOR_DYNACONF") is False:
++        # Use _envless_load if explicitly requested or if ENVIRONMENTS is disabled
++        if self._envless or self.obj.get("ENVIRONMENTS_FOR_DYNACONF") is False:
+             self._envless_load(source_data, silent, key)
+         else:
+             self._load_all_envs(source_data, silent, key)

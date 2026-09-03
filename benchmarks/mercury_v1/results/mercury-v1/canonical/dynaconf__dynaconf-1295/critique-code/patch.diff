@@ -1,0 +1,69 @@
+diff --git a/docs/advanced.md b/docs/advanced.md
+index ecc7e3b..83075a4 100644
+--- a/docs/advanced.md
++++ b/docs/advanced.md
+@@ -380,6 +380,10 @@ settings.load_file(path=["/path/to/file.toml", "/path/to/another-file.toml"])
+ 
+ # separated by ; or ,
+ settings.load_file(path="/path/to/file.toml;/path/to/another-file.toml")
++
++# Bypass environment processing - load all top-level variables directly
++# (available since 3.2.11)
++settings.load_file(path="/path/to/file.toml", env=False)
+ ```
+ 
+ Notice that data loaded by this method is not persisted.
+@@ -392,6 +396,11 @@ be loaded programmatically again.
+ 
+ - Calls to `load_file` will be recorded on the inspect history and include module and line number.
+ 
++**new in 3.2.11**
++
++- Set `env=False` to bypass environment processing and load all top-level variables directly.
++  This works regardless of whether `environments` is enabled or disabled globally.
++
+ 
+ ## Prefix filtering
+ 
+diff --git a/dynaconf/base.py b/dynaconf/base.py
+index 561ac16..bd04514 100644
+--- a/dynaconf/base.py
++++ b/dynaconf/base.py
+@@ -1314,7 +1314,9 @@ class Settings:
+         - CWD
+ 
+         :param path: A single filename, a glob or a file list
+-        :param env: Which env to load from file (default current_env)
++        :param env: Which env to load from file (default current_env).
++            Set to False to bypass environment processing and load all
++            top-level variables directly (available since 3.2.11).
+         :param silent: Should raise errors?
+         :param key: Load a single key?
+         :param validate: Should trigger validation?
+@@ -1327,7 +1329,11 @@ class Settings:
+         if validate is empty:
+             validate = self.get("VALIDATE_ON_UPDATE_FOR_DYNACONF")
+ 
+-        env = (env or self.current_env).upper()
++        # Use special marker for env-less loading when env=False
++        if env is False:
++            env = "_envless"
++        else:
++            env = (env or self.current_env).upper()
+ 
+         # Using inspect take the filename and line number of the caller
+         # to be used in the source_metadata
+diff --git a/dynaconf/loaders/base.py b/dynaconf/loaders/base.py
+index e0ea23b..53ae35e 100644
+--- a/dynaconf/loaders/base.py
++++ b/dynaconf/loaders/base.py
+@@ -78,7 +78,8 @@ class BaseLoader:
+ 
+         source_data = self.get_source_data(files)
+ 
+-        if self.obj.get("ENVIRONMENTS_FOR_DYNACONF") is False:
++        # Check for special envless marker or ENVIRONMENTS_FOR_DYNACONF=False
++        if self.env == "_envless" or self.obj.get("ENVIRONMENTS_FOR_DYNACONF") is False:
+             self._envless_load(source_data, silent, key)
+         else:
+             self._load_all_envs(source_data, silent, key)

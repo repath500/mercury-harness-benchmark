@@ -1,0 +1,45 @@
+diff --git a/starlette/convertors.py b/starlette/convertors.py
+index 2d8ab53..a8f3428 100644
+--- a/starlette/convertors.py
++++ b/starlette/convertors.py
+@@ -67,10 +67,12 @@ class FloatConvertor(Convertor[float]):
+ 
+ 
+ class UUIDConvertor(Convertor[uuid.UUID]):
+-    regex = "[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}"
++    regex = "[0-9a-fA-F]{8}-?[0-9a-fA-F]{4}-?[0-9a-fA-F]{4}-?[0-9a-fA-F]{4}-?[0-9a-fA-F]{12}"
+ 
+     def convert(self, value: str) -> uuid.UUID:
+-        return uuid.UUID(value)
++        # Remove hyphens and normalize to lowercase for UUID parsing
++        normalized = value.replace("-", "").lower()
++        return uuid.UUID(normalized)
+ 
+     def to_string(self, value: uuid.UUID) -> str:
+         return str(value)
+diff --git a/tests/test_routing.py b/tests/test_routing.py
+index 6d7e5d1..1e211ea 100644
+--- a/tests/test_routing.py
++++ b/tests/test_routing.py
+@@ -255,6 +255,21 @@ def test_route_converters(client: TestClient) -> None:
+         == "/uuid/ec38df32-ceda-4cfa-9b4a-1aeb94ad551a"
+     )
+ 
++    # Test UUID with uppercase letters
++    response = client.get("/uuid/EC38DF32-CEDA-4CFA-9B4A-1AEB94AD551A")
++    assert response.status_code == 200
++    assert response.json() == {"uuid": "ec38df32-ceda-4cfa-9b4a-1aeb94ad551a"}
++
++    # Test UUID without hyphens
++    response = client.get("/uuid/ec38df32ceda4cfa9b4a1aeb94ad551a")
++    assert response.status_code == 200
++    assert response.json() == {"uuid": "ec38df32-ceda-4cfa-9b4a-1aeb94ad551a"}
++
++    # Test UUID with uppercase and no hyphens
++    response = client.get("/uuid/EC38DF32CEDA4CFA9B4A1AEB94AD551A")
++    assert response.status_code == 200
++    assert response.json() == {"uuid": "ec38df32-ceda-4cfa-9b4a-1aeb94ad551a"}
++
+ 
+ def test_url_path_for() -> None:
+     assert app.url_path_for("homepage") == "/"

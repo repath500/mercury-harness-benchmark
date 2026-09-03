@@ -1,0 +1,37 @@
+diff --git a/jwt/api_jwt.py b/jwt/api_jwt.py
+index 48d739a..319415e 100644
+--- a/jwt/api_jwt.py
++++ b/jwt/api_jwt.py
+@@ -110,7 +110,7 @@ class PyJWT:
+         # passthrough arguments to _validate_claims
+         # consider putting in options
+         audience: str | Iterable[str] | None = None,
+-        issuer: str | None = None,
++        issuer: str | Iterable[str] | None = None,
+         leeway: float | timedelta = 0,
+         # kwargs
+         **kwargs: Any,
+@@ -195,7 +195,7 @@ class PyJWT:
+         # passthrough arguments to _validate_claims
+         # consider putting in options
+         audience: str | Iterable[str] | None = None,
+-        issuer: str | None = None,
++        issuer: str | Iterable[str] | None = None,
+         leeway: float | timedelta = 0,
+         # kwargs
+         **kwargs: Any,
+@@ -362,7 +362,13 @@ class PyJWT:
+         if "iss" not in payload:
+             raise MissingRequiredClaimError("iss")
+ 
+-        if payload["iss"] != issuer:
++        if isinstance(issuer, str):
++            if payload["iss"] != issuer:
++                raise InvalidIssuerError("Invalid issuer")
++        elif isinstance(issuer, Iterable):
++            if payload["iss"] not in issuer:
++                raise InvalidIssuerError("Invalid issuer")
++        else:
+             raise InvalidIssuerError("Invalid issuer")
+ 
+ 

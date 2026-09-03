@@ -1,0 +1,155 @@
+diff --git a/docs/mkdocs.yml b/docs/mkdocs.yml
+index 82ccd2ef4..05181dcb1 100644
+--- a/docs/mkdocs.yml
++++ b/docs/mkdocs.yml
+@@ -53,7 +53,8 @@ nav:
+         - Classification Finetuning: tutorials/classification_finetuning/index.ipynb
+         - Multi-Hop Search: tutorials/multihop_search/index.ipynb
+         - Privacy-Conscious Delegation: tutorials/papillon/index.md
+-        - Image Generation Prompt iteration: tutorials/image_generation_prompting/index.ipynb
++        - Image Generation Prompting: tutorials/image_generation_prompting/index.ipynb
++        - Output Refinement: tutorials/output_refinement/index.md
+         - Finetuning Agents: tutorials/games/index.ipynb
+         - Saving and Loading: tutorials/saving/index.md
+         - Deployment: tutorials/deployment/index.md
+@@ -84,6 +85,7 @@ nav:
+             - Embedder: api/models/Embedder.md
+             - LM: api/models/LM.md
+         - Modules:
++            - BestOfN: api/modules/BestOfN.md
+             - ChainOfThought: api/modules/ChainOfThought.md
+             - ChainOfThoughtWithHint: api/modules/ChainOfThoughtWithHint.md
+             - Module: api/modules/Module.md
+@@ -92,6 +94,7 @@ nav:
+             - Predict: api/modules/Predict.md
+             - Program: api/modules/Program.md
+             - ProgramOfThought: api/modules/ProgramOfThought.md
++            - Refine: api/modules/Refine.md
+             - ReAct: api/modules/ReAct.md
+         - Optimizers:
+             - BetterTogether: api/optimizers/BetterTogether.md
+diff --git a/dspy/predict/best_of_n.py b/dspy/predict/best_of_n.py
+index 452c86172..fbc16886b 100644
+--- a/dspy/predict/best_of_n.py
++++ b/dspy/predict/best_of_n.py
+@@ -1,43 +1,64 @@
+ import dspy
+ 
+ from .predict import Module
+-from typing import Callable
++from typing import Callable, Optional
+ 
+ 
+ class BestOfN(Module):
+-    def __init__(self, module, N: int, reward_fn: Callable, threshold: float):
++    def __init__(
++        self,
++        module: Module,
++        N: int,
++        reward_fn: Callable[[dict, "dspy.Prediction"], float],
++        threshold: float,
++        fail_count: Optional[int] = None,
++    ):
+         """
+-        Runs a module up to `N` times with different temperatures and returns the best prediction or the first prediction that passes the `threshold`.
++        Runs a module up to `N` times with different temperatures and returns the best prediction
++        or the first prediction that passes the `threshold`.
++
++        This module runs the provided module multiple times with varying temperature settings and
++        selects either the first prediction that exceeds the specified threshold or the one with
++        the highest reward.
+ 
+         Args:
+-            module: The module to run.
+-            N: The number of times to run the module.
+-            reward_fn: The reward function.
+-            threshold: The threshold for the reward function.
++            module (Module): The module to run.
++            N (int): The number of times to run the module.
++            reward_fn (Callable): The reward function that takes (inputs, prediction) and returns a float score.
++            threshold (float): The threshold for the reward function. If a prediction exceeds this,
++                it will be returned immediately.
++            fail_count (Optional[int]): The maximum number of failed attempts to tolerate before
++                raising an exception. If None, defaults to N (all attempts must fail before raising).
+ 
+         Example:
+             >>> import dspy
+             >>> qa = dspy.ChainOfThought("question -> answer")
+             >>> def one_word_answer(args, pred):
+-            >>>     return 1.0 if len(pred.answer) == 1 else 0.0
++            ...     return 1.0 if len(pred.answer.split()) == 1 else 0.0
+             >>> best_of_3 = dspy.BestOfN(module=qa, N=3, reward_fn=one_word_answer, threshold=1.0)
+             >>> best_of_3(question="What is the capital of Belgium?").answer
+             >>> # Brussels
++
++        Example with fail_count:
++            >>> # Only allow 1 failure before raising an exception
++            >>> best_of_3 = dspy.BestOfN(
++            ...     module=qa, N=3, reward_fn=one_word_answer, threshold=1.0, fail_count=1
++            ... )
+         """
+         self.module = module
+-        self.reward_fn = lambda *args: reward_fn(
+-            *args)  # to prevent this from becoming a parameter
++        self.reward_fn = lambda *args: reward_fn(*args)  # to prevent this from becoming a parameter
+         self.threshold = threshold
+         self.N = N
++        self.fail_count = fail_count if fail_count is not None else N  # default to N
+ 
+     def forward(self, **kwargs):
+         lm = self.module.get_lm() or dspy.settings.lm
+-        temps = [lm.kwargs['temperature']
+-                 ] + [0.5 + i * (0.5 / self.N) for i in range(self.N)]
+-        temps = list(dict.fromkeys(temps))[:self.N]
++        temps = [lm.kwargs["temperature"]] + [0.5 + i * (0.5 / self.N) for i in range(self.N)]
++        temps = list(dict.fromkeys(temps))[: self.N]
+         best_pred, best_trace, best_reward = None, None, -float("inf")
++        attempts_failed = 0
+ 
+-        for t in temps:
++        for idx, t in enumerate(temps):
+             lm_ = lm.copy(temperature=t)
+             mod = self.module.deepcopy()
+             mod.set_lm(lm_)
+@@ -57,7 +78,15 @@ class BestOfN(Module):
+                     break
+ 
+             except Exception as e:
+-                print(f"Attempt failed with temperature {t}: {e}")
++                attempts_failed += 1
++                print(f"BestOfN: Attempt {idx + 1} failed with temperature {t}: {e}")
++
++                # Check if we've exceeded the failure tolerance
++                if attempts_failed > self.fail_count:
++                    raise RuntimeError(
++                        f"BestOfN exceeded failure tolerance: {attempts_failed} failures (limit: {self.fail_count}). "
++                        f"Attempt {idx + 1} at temperature {t} failed with error: {e}"
++                    ) from e
+ 
+         dspy.settings.trace.extend(best_trace)
+         return best_pred
+diff --git a/dspy/predict/refine.py b/dspy/predict/refine.py
+index 7e421ed2d..773339635 100644
+--- a/dspy/predict/refine.py
++++ b/dspy/predict/refine.py
+@@ -149,10 +149,16 @@ class Refine(Module):
+                 # print(f"Advice for each module: {advice}")
+ 
+             except Exception as e:
+-                print(f"Refine: Attempt failed with temperature {t}: {e}")
+-                if idx > self.fail_count:
+-                    raise e
+-                self.fail_count -= 1
++                attempts_failed = getattr(self, "_attempts_failed", 0) + 1
++                self._attempts_failed = attempts_failed
++                print(f"Refine: Attempt {idx + 1} failed with temperature {t}: {e}")
++
++                # Check if we've exceeded the failure tolerance
++                if attempts_failed > self.fail_count:
++                    raise RuntimeError(
++                        f"Refine exceeded failure tolerance: {attempts_failed} failures (limit: {self.fail_count}). "
++                        f"Attempt {idx + 1} at temperature {t} failed with error: {e}"
++                    ) from e
+         if best_trace:
+             dspy.settings.trace.extend(best_trace)
+         return best_pred

@@ -1,0 +1,126 @@
+diff --git a/docs/mkdocs.yml b/docs/mkdocs.yml
+index 82ccd2ef4..68aa6aca4 100644
+--- a/docs/mkdocs.yml
++++ b/docs/mkdocs.yml
+@@ -45,6 +45,7 @@ nav:
+                 - YouRM: deep-dive/retrieval_models_clients/YouRM.md
+     - Tutorials:
+         - Tutorials Overview: tutorials/index.md
++        - Output Refinement: tutorials/output_refinement/index.md
+         - Retrieval-Augmented Generation: tutorials/rag/index.ipynb
+         - Agents: tutorials/agents/index.ipynb
+         - Reasoning: tutorials/math/index.ipynb
+@@ -84,6 +85,7 @@ nav:
+             - Embedder: api/models/Embedder.md
+             - LM: api/models/LM.md
+         - Modules:
++            - BestOfN: api/modules/BestOfN.md
+             - ChainOfThought: api/modules/ChainOfThought.md
+             - ChainOfThoughtWithHint: api/modules/ChainOfThoughtWithHint.md
+             - Module: api/modules/Module.md
+@@ -92,6 +94,7 @@ nav:
+             - Predict: api/modules/Predict.md
+             - Program: api/modules/Program.md
+             - ProgramOfThought: api/modules/ProgramOfThought.md
++            - Refine: api/modules/Refine.md
+             - ReAct: api/modules/ReAct.md
+         - Optimizers:
+             - BetterTogether: api/optimizers/BetterTogether.md
+diff --git a/dspy/predict/best_of_n.py b/dspy/predict/best_of_n.py
+index 452c86172..09c948310 100644
+--- a/dspy/predict/best_of_n.py
++++ b/dspy/predict/best_of_n.py
+@@ -1,19 +1,32 @@
+ import dspy
+ 
+ from .predict import Module
+-from typing import Callable
++from typing import Callable, Optional
+ 
+ 
+ class BestOfN(Module):
+-    def __init__(self, module, N: int, reward_fn: Callable, threshold: float):
++    def __init__(
++        self,
++        module,
++        N: int,
++        reward_fn: Callable,
++        threshold: float,
++        fail_count: Optional[int] = None,
++    ):
+         """
+         Runs a module up to `N` times with different temperatures and returns the best prediction or the first prediction that passes the `threshold`.
+ 
++        This module runs the provided module multiple times with varying temperature settings and selects
++        either the first prediction that exceeds the specified threshold or the one with the highest reward.
++        If no prediction meets the threshold, it automatically raises an exception based on the fail_count parameter.
++
+         Args:
+             module: The module to run.
+             N: The number of times to run the module.
+             reward_fn: The reward function.
+             threshold: The threshold for the reward function.
++            fail_count: The maximum number of failed attempts to tolerate. If not provided, defaults to N,
++                        meaning all N attempts must fail before an exception is raised.
+ 
+         Example:
+             >>> import dspy
+@@ -29,6 +42,7 @@ class BestOfN(Module):
+             *args)  # to prevent this from becoming a parameter
+         self.threshold = threshold
+         self.N = N
++        self.fail_count = fail_count or N  # default to N if fail_count is not provided
+ 
+     def forward(self, **kwargs):
+         lm = self.module.get_lm() or dspy.settings.lm
+@@ -36,6 +50,7 @@ class BestOfN(Module):
+                  ] + [0.5 + i * (0.5 / self.N) for i in range(self.N)]
+         temps = list(dict.fromkeys(temps))[:self.N]
+         best_pred, best_trace, best_reward = None, None, -float("inf")
++        failure_count = 0
+ 
+         for t in temps:
+             lm_ = lm.copy(temperature=t)
+@@ -57,7 +72,10 @@ class BestOfN(Module):
+                     break
+ 
+             except Exception as e:
++                failure_count += 1
+                 print(f"Attempt failed with temperature {t}: {e}")
++                if failure_count >= self.fail_count:
++                    raise e
+ 
+         dspy.settings.trace.extend(best_trace)
+         return best_pred
+diff --git a/dspy/predict/refine.py b/dspy/predict/refine.py
+index 7e421ed2d..708a455d6 100644
+--- a/dspy/predict/refine.py
++++ b/dspy/predict/refine.py
+@@ -54,13 +54,13 @@ class Refine(Module):
+         either the first prediction that exceeds the specified threshold or the one with the highest reward.
+         If no prediction meets the threshold, it automatically generates feedback to improve future predictions.
+ 
+-
+         Args:
+             module (Module): The module to refine.
+-            N (int): The number of times to run the module. must
++            N (int): The number of times to run the module.
+             reward_fn (Callable): The reward function.
+             threshold (float): The threshold for the reward function.
+-            fail_count (Optional[int], optional): The number of times the module can fail before raising an error
++            fail_count (Optional[int]): The maximum number of failed attempts to tolerate. If not provided,
++                                        defaults to N, meaning all N attempts must fail before an exception is raised.
+ 
+         Example:
+             >>> import dspy
+@@ -68,8 +68,8 @@ class Refine(Module):
+             >>> qa = dspy.ChainOfThought("question -> answer")
+             >>> def one_word_answer(args, pred):
+             >>>     return 1.0 if len(pred.answer) == 1 else 0.0
+-            >>> best_of_3 = dspy.Refine(module=qa, N=3, reward_fn=one_word_answer, threshold=1.0)
+-            >>> best_of_3(question="What is the capital of Belgium?").answer
++            >>> refine = dspy.Refine(module=qa, N=3, reward_fn=one_word_answer, threshold=1.0)
++            >>> refine(question="What is the capital of Belgium?").answer
+             >>> # Brussels
+         """
+         self.module = module

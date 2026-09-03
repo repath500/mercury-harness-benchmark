@@ -1,0 +1,170 @@
+diff --git a/docs/mkdocs.yml b/docs/mkdocs.yml
+index 82ccd2ef4..2e5c6e29c 100644
+--- a/docs/mkdocs.yml
++++ b/docs/mkdocs.yml
+@@ -52,6 +52,7 @@ nav:
+         - Classification: tutorials/classification/index.md
+         - Classification Finetuning: tutorials/classification_finetuning/index.ipynb
+         - Multi-Hop Search: tutorials/multihop_search/index.ipynb
++        - Output Refinement: tutorials/output_refinement/index.md
+         - Privacy-Conscious Delegation: tutorials/papillon/index.md
+         - Image Generation Prompt iteration: tutorials/image_generation_prompting/index.ipynb
+         - Finetuning Agents: tutorials/games/index.ipynb
+@@ -84,6 +85,7 @@ nav:
+             - Embedder: api/models/Embedder.md
+             - LM: api/models/LM.md
+         - Modules:
++            - BestOfN: api/modules/BestOfN.md
+             - ChainOfThought: api/modules/ChainOfThought.md
+             - ChainOfThoughtWithHint: api/modules/ChainOfThoughtWithHint.md
+             - Module: api/modules/Module.md
+@@ -93,6 +95,7 @@ nav:
+             - Program: api/modules/Program.md
+             - ProgramOfThought: api/modules/ProgramOfThought.md
+             - ReAct: api/modules/ReAct.md
++            - Refine: api/modules/Refine.md
+         - Optimizers:
+             - BetterTogether: api/optimizers/BetterTogether.md
+             - BootstrapFewShot: api/optimizers/BootstrapFewShot.md
+diff --git a/dspy/predict/best_of_n.py b/dspy/predict/best_of_n.py
+index 452c86172..cd7e5d23f 100644
+--- a/dspy/predict/best_of_n.py
++++ b/dspy/predict/best_of_n.py
+@@ -1,19 +1,32 @@
++import inspect
++from typing import Callable, Optional
++
+ import dspy
+ 
+ from .predict import Module
+-from typing import Callable
+ 
+ 
+ class BestOfN(Module):
+-    def __init__(self, module, N: int, reward_fn: Callable, threshold: float):
++    def __init__(
++        self,
++        module,
++        N: int,
++        reward_fn: Callable,
++        threshold: float,
++        fail_count: Optional[int] = None,
++    ):
+         """
+         Runs a module up to `N` times with different temperatures and returns the best prediction or the first prediction that passes the `threshold`.
+ 
++        This module provides configurable failure tolerance through the `fail_count` parameter, allowing you to control how many failed attempts are tolerated before raising an exception. When `fail_count` is not provided, it defaults to `N-1`, meaning the exception is raised only when all attempts fail.
++
+         Args:
+             module: The module to run.
+             N: The number of times to run the module.
+-            reward_fn: The reward function.
+-            threshold: The threshold for the reward function.
++            reward_fn: A callable that takes (args, pred) and returns a float score.
++            threshold: The minimum reward threshold. If None, all successful attempts are compared.
++            fail_count: Optional[int]: Maximum number of failed attempts to tolerate. If None, defaults to N-1.
++                When exceeded, an exception is raised immediately with details about the failed attempt.
+ 
+         Example:
+             >>> import dspy
+@@ -23,21 +36,30 @@ class BestOfN(Module):
+             >>> best_of_3 = dspy.BestOfN(module=qa, N=3, reward_fn=one_word_answer, threshold=1.0)
+             >>> best_of_3(question="What is the capital of Belgium?").answer
+             >>> # Brussels
++
++        Example with fail_count:
++            >>> best_of_3_strict = dspy.BestOfN(
++            ...     module=qa, N=3, reward_fn=one_word_answer, threshold=1.0, fail_count=1
++            ... )
++            >>> # Only 1 failure is tolerated before raising an exception
+         """
+         self.module = module
+         self.reward_fn = lambda *args: reward_fn(
+             *args)  # to prevent this from becoming a parameter
+         self.threshold = threshold
+         self.N = N
++        self.fail_count = fail_count if fail_count is not None else N - 1  # default to N-1 to raise only when all attempts fail
+ 
+     def forward(self, **kwargs):
+         lm = self.module.get_lm() or dspy.settings.lm
+-        temps = [lm.kwargs['temperature']
+-                 ] + [0.5 + i * (0.5 / self.N) for i in range(self.N)]
++        temps = [lm.kwargs['temperature']] + [0.5 + i * (0.5 / self.N) for i in range(self.N)]
+         temps = list(dict.fromkeys(temps))[:self.N]
+         best_pred, best_trace, best_reward = None, None, -float("inf")
+ 
+-        for t in temps:
++        # Track remaining failures we can tolerate
++        failures_remaining = self.fail_count
++
++        for idx, t in enumerate(temps):
+             lm_ = lm.copy(temperature=t)
+             mod = self.module.deepcopy()
+             mod.set_lm(lm_)
+@@ -57,7 +79,10 @@ class BestOfN(Module):
+                     break
+ 
+             except Exception as e:
+-                print(f"Attempt failed with temperature {t}: {e}")
++                print(f"BestOfN: Attempt {idx + 1} failed with temperature {t}: {e}")
++                failures_remaining -= 1
++                if failures_remaining < 0:
++                    raise e
+ 
+         dspy.settings.trace.extend(best_trace)
+         return best_pred
+diff --git a/dspy/predict/refine.py b/dspy/predict/refine.py
+index 7e421ed2d..118fe5f32 100644
+--- a/dspy/predict/refine.py
++++ b/dspy/predict/refine.py
+@@ -54,13 +54,13 @@ class Refine(Module):
+         either the first prediction that exceeds the specified threshold or the one with the highest reward.
+         If no prediction meets the threshold, it automatically generates feedback to improve future predictions.
+ 
+-
+         Args:
+             module (Module): The module to refine.
+-            N (int): The number of times to run the module. must
++            N (int): The number of times to run the module.
+             reward_fn (Callable): The reward function.
+             threshold (float): The threshold for the reward function.
+-            fail_count (Optional[int], optional): The number of times the module can fail before raising an error
++            fail_count (Optional[int], optional): The maximum number of failed attempts to tolerate.
++                If not provided, defaults to N-1, meaning the exception is raised only when all attempts fail.
+ 
+         Example:
+             >>> import dspy
+@@ -76,7 +76,7 @@ class Refine(Module):
+         self.reward_fn = lambda *args: reward_fn(*args)  # to prevent this from becoming a parameter
+         self.threshold = threshold
+         self.N = N
+-        self.fail_count = fail_count or N  # default to N if fail_count is not provided
++        self.fail_count = fail_count if fail_count is not None else N - 1  # default to N-1 to raise only when all attempts fail
+         self.module_code = inspect.getsource(module.__class__)
+         try:
+             self.reward_fn_code = inspect.getsource(reward_fn)
+@@ -91,6 +91,9 @@ class Refine(Module):
+         advice = None
+         adapter = dspy.settings.adapter or dspy.ChatAdapter()
+ 
++        # Track remaining failures we can tolerate
++        failures_remaining = self.fail_count
++
+         for idx, t in enumerate(temps):
+             lm_ = lm.copy(temperature=t)
+             mod = self.module.deepcopy()
+@@ -149,10 +152,11 @@ class Refine(Module):
+                 # print(f"Advice for each module: {advice}")
+ 
+             except Exception as e:
+-                print(f"Refine: Attempt failed with temperature {t}: {e}")
+-                if idx > self.fail_count:
++                print(f"Refine: Attempt {idx + 1} failed with temperature {t}: {e}")
++                failures_remaining -= 1
++                if failures_remaining < 0:
+                     raise e
+-                self.fail_count -= 1
++
+         if best_trace:
+             dspy.settings.trace.extend(best_trace)
+         return best_pred

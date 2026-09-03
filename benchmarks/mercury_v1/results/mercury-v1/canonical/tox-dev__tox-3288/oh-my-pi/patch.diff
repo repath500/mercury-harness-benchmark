@@ -1,0 +1,64 @@
+diff --git a/src/tox/config/loader/convert.py b/src/tox/config/loader/convert.py
+index f7cf4e38..c4342d3f 100644
+--- a/src/tox/config/loader/convert.py
++++ b/src/tox/config/loader/convert.py
+@@ -26,6 +26,9 @@ class Convert(ABC, Generic[T]):
+         :param factory: factory method to build the object
+         :return: the converted type
+         """
++        # Check for generic types via __origin__ first, regardless of module
++        if getattr(of_type, "__origin__", None) is not None:
++            return self._to_typing(raw, of_type, factory)
+         from_module = getattr(of_type, "__module__", None)
+         if from_module in {"typing", "typing_extensions"}:
+             return self._to_typing(raw, of_type, factory)
+diff --git a/tests/config/loader/test_str_convert.py b/tests/config/loader/test_str_convert.py
+index 717be8fd..37f3f9a5 100644
+--- a/tests/config/loader/test_str_convert.py
++++ b/tests/config/loader/test_str_convert.py
+@@ -49,6 +49,9 @@ from typing import Literal
+         ("1", "1", Optional[str]),
+         ("", None, Optional[List[str]]),
+         ("1,2", ["1", "2"], Optional[List[str]]),
++        ("1,2", ["1", "2"], list[str]),
++        ("1,2", {"1", "2"}, set[str]),
++        ("a=1\nb=2", {"a": 1, "b": 2}, dict[str, int]),
+         ("1", "1", Literal["1", "2"]),
+     ],
+ )
+diff --git a/tests/config/test_sets.py b/tests/config/test_sets.py
+index c92eeeea..b57ed342 100644
+--- a/tests/config/test_sets.py
++++ b/tests/config/test_sets.py
+@@ -192,3 +192,31 @@ def test_config_work_dir(tox_project: ToxProjectCreator, work_dir: str) -> None:
+     result = project.run("c", *(["--workdir", str(project.path / work_dir)] if work_dir else []))
+     expected = project.path / work_dir if work_dir else Path("b")
+     assert expected == result.state.conf.core["work_dir"]
++
++
++def test_config_set_add_config_lowercase_generic(conf_builder: ConfBuilder) -> None:
++    """Test that lowercase generic types (list[str], set[str], dict[str, int]) work properly."""
++    config_set = conf_builder("passenv = foo")
++    config_set.add_config("passenv", of_type=list[str], default=[], desc="desc")
++    assert config_set["passenv"] == ["foo"]
++
++
++def test_config_set_add_config_lowercase_set_generic(conf_builder: ConfBuilder) -> None:
++    """Test that lowercase set[str] type works properly."""
++    config_set = conf_builder("passenv = foo")
++    config_set.add_config("passenv", of_type=set[str], default=set(), desc="desc")
++    assert config_set["passenv"] == {"foo"}
++
++
++def test_config_set_add_config_lowercase_dict_generic(conf_builder: ConfBuilder) -> None:
++    """Test that lowercase dict[str, int] type works properly."""
++    config_set = conf_builder("env_vars = a=1\n  b=2")
++    config_set.add_config("env_vars", of_type=dict[str, int], default={}, desc="desc")
++    assert config_set["env_vars"] == {"a": 1, "b": 2}
++
++
++def test_config_set_add_config_optional_list_generic(conf_builder: ConfBuilder) -> None:
++    """Test that Optional[list[str]] type works properly."""
++    config_set = conf_builder("passenv = foo")
++    config_set.add_config("passenv", of_type=Optional[list[str]], default=None, desc="desc")
++    assert config_set["passenv"] == ["foo"]

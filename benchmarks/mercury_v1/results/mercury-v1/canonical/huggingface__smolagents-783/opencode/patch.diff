@@ -1,0 +1,51 @@
+diff --git a/src/smolagents/agents.py b/src/smolagents/agents.py
+index 1a42b9e..4d7cc6c 100644
+--- a/src/smolagents/agents.py
++++ b/src/smolagents/agents.py
+@@ -252,7 +252,8 @@ class MultiStepAgent:
+                     if name != "python_interpreter" or self.__class__.__name__ == "ToolCallingAgent"
+                 }
+             )
+-        self.tools["final_answer"] = FinalAnswerTool()
++        if "final_answer" not in self.tools:
++            self.tools["final_answer"] = FinalAnswerTool()
+ 
+     def _validate_tools_and_managed_agents(self, tools, managed_agents):
+         tool_and_managed_agent_names = [tool.name for tool in tools]
+diff --git a/tests/test_agents.py b/tests/test_agents.py
+index f466413..946c7a1 100644
+--- a/tests/test_agents.py
++++ b/tests/test_agents.py
+@@ -465,6 +465,32 @@ class AgentTests(unittest.TestCase):
+         agent = ToolCallingAgent(tools=[], model=fake_code_model, add_base_tools=True)
+         assert len(agent.tools) == 4  # added final_answer tool + search + visit_webpage
+ 
++    def test_custom_final_answer_tool_is_respected(self):
++        """Test that a custom final_answer tool is not overridden by the default."""
++        from smolagents.default_tools import FinalAnswerTool
++
++        class CustomFinalAnswerTool(FinalAnswerTool):
++            name = "final_answer"
++            description = "Custom final answer tool"
++            inputs = {"answer": {"type": "any", "description": "The final answer"}}
++            output_type = "any"
++
++            def forward(self, answer):
++                return f"custom:{answer}"
++
++        custom_tool = CustomFinalAnswerTool()
++
++        # Test CodeAgent respects custom final_answer
++        agent1 = CodeAgent(tools=[custom_tool], model=fake_code_model)
++        assert "final_answer" in agent1.tools
++        assert agent1.tools["final_answer"] is custom_tool
++        assert agent1.tools["final_answer"].forward("test") == "custom:test"
++
++        # Test ToolCallingAgent respects custom final_answer
++        agent2 = ToolCallingAgent(tools=[custom_tool], model=fake_code_model)
++        assert agent2.tools["final_answer"] is custom_tool
++        assert agent2.tools["final_answer"].forward("test") == "custom:test"
++
+     def test_function_persistence_across_steps(self):
+         agent = CodeAgent(
+             tools=[],

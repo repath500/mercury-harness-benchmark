@@ -1,0 +1,19 @@
+diff --git a/starlette/convertors.py b/starlette/convertors.py
+index 2d8ab53..773062a 100644
+--- a/starlette/convertors.py
++++ b/starlette/convertors.py
+@@ -67,10 +67,12 @@ class FloatConvertor(Convertor[float]):
+ 
+ 
+ class UUIDConvertor(Convertor[uuid.UUID]):
+-    regex = "[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}"
++    regex = "[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}|[0-9a-fA-F]{32}"
+ 
+     def convert(self, value: str) -> uuid.UUID:
+-        return uuid.UUID(value)
++        # Normalize: remove hyphens and lowercase for consistent UUID construction
++        normalized = value.replace("-", "").lower()
++        return uuid.UUID(normalized)
+ 
+     def to_string(self, value: uuid.UUID) -> str:
+         return str(value)

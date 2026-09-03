@@ -1,0 +1,43 @@
+diff --git a/starlette/convertors.py b/starlette/convertors.py
+index 2d8ab53..f1c7a3a 100644
+--- a/starlette/convertors.py
++++ b/starlette/convertors.py
+@@ -67,10 +67,10 @@ class FloatConvertor(Convertor[float]):
+ 
+ 
+ class UUIDConvertor(Convertor[uuid.UUID]):
+-    regex = "[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}"
++    regex = r"[0-9a-fA-F]{8}-?[0-9a-fA-F]{4}-?[0-9a-fA-F]{4}-?[0-9a-fA-F]{4}-?[0-9a-fA-F]{12}"
+ 
+     def convert(self, value: str) -> uuid.UUID:
+-        return uuid.UUID(value)
++        return uuid.UUID(value.replace("-", ""))
+ 
+     def to_string(self, value: uuid.UUID) -> str:
+         return str(value)
+diff --git a/tests/test_routing.py b/tests/test_routing.py
+index 6d7e5d1..175fbf2 100644
+--- a/tests/test_routing.py
++++ b/tests/test_routing.py
+@@ -247,9 +247,18 @@ def test_route_converters(client: TestClient) -> None:
+     assert app.url_path_for("path-convertor", param="some/example") == "/path/some/example"
+ 
+     # Test UUID conversion
+-    response = client.get("/uuid/ec38df32-ceda-4cfa-9b4a-1aeb94ad551a")
+-    assert response.status_code == 200
+-    assert response.json() == {"uuid": "ec38df32-ceda-4cfa-9b4a-1aeb94ad551a"}
++    uuid_formats = [
++        "ec38df32-ceda-4cfa-9b4a-1aeb94ad551a",
++        "EC38DF32-CEDA-4CFA-9B4A-1AEB94AD551A",
++        "ec38df32ceda4cfa9b4a1aeb94ad551a",
++        "EC38DF32CEDA4CFA9B4A1AEB94AD551A",
++        "ec38df32-ceda-4cfa-9b4a1aeb94ad551a",
++        "EC38DF32-CEDA-4CFA-9B4A1AEB94AD551A",
++    ]
++    for uuid_param in uuid_formats:
++        response = client.get(f"/uuid/{uuid_param}")
++        assert response.status_code == 200, f"Failed for UUID: {uuid_param}"
++        assert response.json() == {"uuid": "ec38df32-ceda-4cfa-9b4a-1aeb94ad551a"}
+     assert (
+         app.url_path_for("uuid-convertor", param=uuid.UUID("ec38df32-ceda-4cfa-9b4a-1aeb94ad551a"))
+         == "/uuid/ec38df32-ceda-4cfa-9b4a-1aeb94ad551a"

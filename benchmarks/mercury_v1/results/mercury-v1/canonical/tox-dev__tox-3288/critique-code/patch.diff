@@ -1,0 +1,25 @@
+diff --git a/src/tox/config/loader/convert.py b/src/tox/config/loader/convert.py
+index f7cf4e38..aff3deef 100644
+--- a/src/tox/config/loader/convert.py
++++ b/src/tox/config/loader/convert.py
+@@ -26,6 +26,11 @@ class Convert(ABC, Generic[T]):
+         :param factory: factory method to build the object
+         :return: the converted type
+         """
++        # Check if this is a generic type (e.g., list[str], Dict[str, int])
++        # This handles both typing generics (List[str]) and built-in generics (list[str])
++        origin = getattr(of_type, "__origin__", None)
++        if origin is not None:
++            return self._to_typing(raw, of_type, factory)
+         from_module = getattr(of_type, "__module__", None)
+         if from_module in {"typing", "typing_extensions"}:
+             return self._to_typing(raw, of_type, factory)
+@@ -47,7 +52,7 @@ class Convert(ABC, Generic[T]):
+         return of_type(raw)  # type: ignore[call-arg]
+ 
+     def _to_typing(self, raw: T, of_type: type[V], factory: Factory[V]) -> V:  # noqa: C901
+-        origin = getattr(of_type, "__origin__", of_type.__class__)
++        origin = getattr(of_type, "__origin__", None)
+         result: Any = _NO_MAPPING
+         if origin in {list, List}:
+             entry_type = of_type.__args__[0]  # type: ignore[attr-defined]

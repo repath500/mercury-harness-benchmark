@@ -1,0 +1,130 @@
+diff --git a/docs/settings_files.md b/docs/settings_files.md
+index 6cf9a6f..7733323 100644
+--- a/docs/settings_files.md
++++ b/docs/settings_files.md
+@@ -135,6 +135,24 @@ It is also possible to make dynaconf read the files separated by layered
+ environments so each section or first level key is loaded as a
+ distinct environment.
+ 
++### Bypassing environment processing
++
++If you want to load a file without any environment-based filtering or layers,
++you can use `env=False` when calling `load_file()`. This will load all top-level
++variables from the file directly, regardless of whether environment support is
++enabled in your configuration.
++
++```python
++settings.load_file(path="config.toml", env=False)
++```
++
++This is available starting from version 3.2.11. The file will be treated as
++environment-agnostic, with all top-level keys loaded at the global level.
++
++**Note:** When using `env=False`, the file is processed using the environment-less
++loading path, which means section headers like `[development]` or `[production]`
++will be treated as regular keys rather than environment sections.
++
+ === "config.py"
+     ```py
+     settings = Dynaconf(environments=True)
+diff --git a/dynaconf/base.py b/dynaconf/base.py
+index 561ac16..238905b 100644
+--- a/dynaconf/base.py
++++ b/dynaconf/base.py
+@@ -1314,7 +1314,9 @@ class Settings:
+         - CWD
+ 
+         :param path: A single filename, a glob or a file list
+-        :param env: Which env to load from file (default current_env)
++        :param env: Which env to load from file (default current_env).
++            Set to False to bypass environment processing and load all
++            top-level variables from the file directly.
+         :param silent: Should raise errors?
+         :param key: Load a single key?
+         :param validate: Should trigger validation?
+@@ -1327,7 +1329,11 @@ class Settings:
+         if validate is empty:
+             validate = self.get("VALIDATE_ON_UPDATE_FOR_DYNACONF")
+ 
+-        env = (env or self.current_env).upper()
++        # Handle env=False to bypass environment processing
++        if env is False:
++            env = "_envless"
++        else:
++            env = (env or self.current_env).upper()
+ 
+         # Using inspect take the filename and line number of the caller
+         # to be used in the source_metadata
+diff --git a/dynaconf/loaders/base.py b/dynaconf/loaders/base.py
+index e0ea23b..3ad9698 100644
+--- a/dynaconf/loaders/base.py
++++ b/dynaconf/loaders/base.py
+@@ -78,7 +78,11 @@ class BaseLoader:
+ 
+         source_data = self.get_source_data(files)
+ 
+-        if self.obj.get("ENVIRONMENTS_FOR_DYNACONF") is False:
++        # Check if environment processing should be bypassed
++        # env="_envless" is set when load_file(env=False) is called
++        env_bypassed = self.env == "_envless"
++
++        if env_bypassed or self.obj.get("ENVIRONMENTS_FOR_DYNACONF") is False:
+             self._envless_load(source_data, silent, key)
+         else:
+             self._load_all_envs(source_data, silent, key)
+@@ -110,18 +114,37 @@ class BaseLoader:
+         return data
+ 
+     def _envless_load(self, source_data, silent=True, key=None):
+-        """Load all the keys from each file without env separation"""
++        """Load all the keys from each file without env separation
++
++        When env=False is passed to load_file(), all top-level values
++        from the file are loaded at the global level, regardless of
++        whether the file contains environment sections.
++        """
+         for file_name, file_data in source_data.items():
+             # is there a `dynaconf_merge` on top level of file?
+             file_merge = file_data.get("dynaconf_merge", empty)
+ 
++            # Flatten section data if the file has env sections.
++            # When using env=False, we want all values at the top level.
++            flattened_data = {}
++            for section_key, value in file_data.items():
++                if isinstance(value, dict) and section_key.lower() in (
++                    "default", "global", "development", "production",
++                    "testing", "staging", "qa", "uat"
++                ):
++                    # This looks like an env section - flatten its contents
++                    flattened_data.update(value)
++                else:
++                    # Regular key at top level
++                    flattened_data[section_key] = value
++
+             # set source metadata
+             source_metadata = SourceMetadata(
+                 self.identifier, file_name, "default"
+             )
+ 
+             self._set_data_to_obj(
+-                file_data,
++                flattened_data,
+                 source_metadata,
+                 file_merge=file_merge,
+                 key=key,
+@@ -222,6 +245,15 @@ class BaseLoader:
+                 dotted_lookup=file_dotted_lookup,
+                 validate=self.validate,
+             )
++        else:
++            # key was specified but not found in data - still update with all data
++            self.obj.update(
++                data,
++                loader_identifier=identifier,
++                merge=file_merge,
++                dotted_lookup=file_dotted_lookup,
++                validate=self.validate,
++            )
+ 
+ 
+ class SourceMetadata(NamedTuple):

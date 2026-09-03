@@ -1,0 +1,165 @@
+diff --git a/aiogram/fsm/context.py b/aiogram/fsm/context.py
+index 53a8ea46..5e7fe2c0 100644
+--- a/aiogram/fsm/context.py
++++ b/aiogram/fsm/context.py
+@@ -20,6 +20,9 @@ class FSMContext:
+     async def get_data(self) -> Dict[str, Any]:
+         return await self.storage.get_data(key=self.key)
+ 
++    async def get_value(self, field: str, default: Optional[Any] = None) -> Any:
++        return await self.storage.get_value(key=self.key, field=field, default=default)
++
+     async def update_data(
+         self, data: Optional[Dict[str, Any]] = None, **kwargs: Any
+     ) -> Dict[str, Any]:
+diff --git a/aiogram/fsm/scene.py b/aiogram/fsm/scene.py
+index 991b3472..30578d48 100644
+--- a/aiogram/fsm/scene.py
++++ b/aiogram/fsm/scene.py
+@@ -572,6 +572,16 @@ class SceneWizard:
+         """
+         return await self.state.get_data()
+ 
++    async def get_value(self, field: str, default: Any | None = None) -> Any:
++        """
++        This method returns a specific value from the data stored in the current state.
++
++        :param field: name of the data field to retrieve
++        :param default: value to return if field doesn't exist
++        :return: field value or default
++        """
++        return await self.state.get_value(field=field, default=default)
++
+     async def update_data(
+         self, data: Optional[Dict[str, Any]] = None, **kwargs: Any
+     ) -> Dict[str, Any]:
+diff --git a/aiogram/fsm/storage/base.py b/aiogram/fsm/storage/base.py
+index 8e1b206f..305605ea 100644
+--- a/aiogram/fsm/storage/base.py
++++ b/aiogram/fsm/storage/base.py
+@@ -144,6 +144,18 @@ class BaseStorage(ABC):
+         """
+         pass
+ 
++    async def get_value(self, key: StorageKey, field: str, default: Optional[Any] = None) -> Any:
++        """
++        Get a specific value from storage data by field name.
++
++        :param key: storage key
++        :param field: name of the data field to retrieve
++        :param default: value to return if field doesn't exist
++        :return: field value or default
++        """
++        data = await self.get_data(key)
++        return data.get(field, default)
++
+     async def update_data(self, key: StorageKey, data: Dict[str, Any]) -> Dict[str, Any]:
+         """
+         Update date in the storage for key (like dict.update)
+diff --git a/aiogram/fsm/storage/memory.py b/aiogram/fsm/storage/memory.py
+index d80a9fff..2d4ba2b9 100644
+--- a/aiogram/fsm/storage/memory.py
++++ b/aiogram/fsm/storage/memory.py
+@@ -49,6 +49,12 @@ class MemoryStorage(BaseStorage):
+     async def get_data(self, key: StorageKey) -> Dict[str, Any]:
+         return self.storage[key].data.copy()
+ 
++    async def get_value(
++        self, key: StorageKey, field: str, default: Optional[Any] = None
++    ) -> Any:
++        record = self.storage[key]
++        return record.data.get(field, default)
++
+ 
+ class DisabledEventIsolation(BaseEventIsolation):
+     @asynccontextmanager
+diff --git a/tests/test_fsm/storage/test_storages.py b/tests/test_fsm/storage/test_storages.py
+index 690bc791..93c7db3c 100644
+--- a/tests/test_fsm/storage/test_storages.py
++++ b/tests/test_fsm/storage/test_storages.py
+@@ -49,3 +49,25 @@ class TestStorages:
+             "foo": "bar",
+             "baz": "test",
+         }
++
++    async def test_get_value(self, storage: BaseStorage, storage_key: StorageKey):
++        # Test getting existing value
++        await storage.set_data(key=storage_key, data={"foo": "bar", "baz": "qux"})
++        assert await storage.get_value(key=storage_key, field="foo") == "bar"
++        assert await storage.get_value(key=storage_key, field="baz") == "qux"
++
++        # Test getting non-existent value with default
++        assert await storage.get_value(key=storage_key, field="nonexistent") is None
++        assert await storage.get_value(key=storage_key, field="nonexistent", default="default") == "default"
++
++        # Test getting non-existent value without default (explicit None)
++        assert await storage.get_value(key=storage_key, field="nonexistent", default=None) is None
++
++    async def test_get_value_isolation(self, storage: BaseStorage, storage_key: StorageKey):
++        # Test that get_value does not allow mutation to affect stored data
++        await storage.set_data(key=storage_key, data={"foo": "bar"})
++        value = await storage.get_value(key=storage_key, field="foo")
++        # Modifying the returned value should not affect stored data
++        if isinstance(value, dict):
++            value["modified"] = True
++            assert await storage.get_value(key=storage_key, field="foo") == "bar"
+diff --git a/tests/test_fsm/test_context.py b/tests/test_fsm/test_context.py
+index f0c29911..0e6edcaa 100644
+--- a/tests/test_fsm/test_context.py
++++ b/tests/test_fsm/test_context.py
+@@ -44,6 +44,12 @@ class TestFSMContext:
+         await state.update_data({"key": "value"})
+         assert await state.get_data() == {"foo": "bar", "key": "value"}
+ 
++        # Test get_value method
++        assert await state.get_value(field="foo") == "bar"
++        assert await state.get_value(field="key") == "value"
++        assert await state.get_value(field="nonexistent") is None
++        assert await state.get_value(field="nonexistent", default="default") == "default"
++
+         await state.clear()
+         assert await state.get_state() is None
+         assert await state.get_data() == {}
+diff --git a/tests/test_fsm/test_scene.py b/tests/test_fsm/test_scene.py
+index 9c388a11..0ff38abe 100644
+--- a/tests/test_fsm/test_scene.py
++++ b/tests/test_fsm/test_scene.py
+@@ -1040,6 +1040,38 @@ class TestSceneWizard:
+         wizard.state.update_data.assert_called_once_with(data=kwargs)
+         assert result == {**kwargs}
+ 
++    async def test_scene_wizard_get_value(self):
++        wizard = SceneWizard(
++            scene_config=AsyncMock(),
++            manager=AsyncMock(),
++            state=AsyncMock(),
++            update_type="message",
++            event=AsyncMock(),
++            data={},
++        )
++        wizard.state.get_value = AsyncMock(return_value="test_value")
++
++        result = await wizard.get_value(field="test_field")
++
++        wizard.state.get_value.assert_called_once_with(field="test_field", default=None)
++        assert result == "test_value"
++
++    async def test_scene_wizard_get_value_with_default(self):
++        wizard = SceneWizard(
++            scene_config=AsyncMock(),
++            manager=AsyncMock(),
++            state=AsyncMock(),
++            update_type="message",
++            event=AsyncMock(),
++            data={},
++        )
++        wizard.state.get_value = AsyncMock(return_value="default_value")
++
++        result = await wizard.get_value(field="test_field", default="default_value")
++
++        wizard.state.get_value.assert_called_once_with(field="test_field", default="default_value")
++        assert result == "default_value"
++
+     async def test_scene_wizard_clear_data(self):
+         wizard = SceneWizard(
+             scene_config=AsyncMock(),

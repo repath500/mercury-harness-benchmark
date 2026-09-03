@@ -1,0 +1,56 @@
+diff --git a/src/tox/config/loader/convert.py b/src/tox/config/loader/convert.py
+index f7cf4e38..6ec82be8 100644
+--- a/src/tox/config/loader/convert.py
++++ b/src/tox/config/loader/convert.py
+@@ -26,8 +26,10 @@ class Convert(ABC, Generic[T]):
+         :param factory: factory method to build the object
+         :return: the converted type
+         """
++        # Check for typing module types or parameterized generics (e.g., list[str], set[int])
+         from_module = getattr(of_type, "__module__", None)
+-        if from_module in {"typing", "typing_extensions"}:
++        has_origin = hasattr(of_type, "__origin__")
++        if from_module in {"typing", "typing_extensions"} or has_origin:
+             return self._to_typing(raw, of_type, factory)
+         if issubclass(of_type, Path):
+             return self.to_path(raw)  # type: ignore[return-value]
+diff --git a/tests/config/test_sets.py b/tests/config/test_sets.py
+index c92eeeea..4db00fc6 100644
+--- a/tests/config/test_sets.py
++++ b/tests/config/test_sets.py
+@@ -192,3 +192,35 @@ def test_config_work_dir(tox_project: ToxProjectCreator, work_dir: str) -> None:
+     result = project.run("c", *(["--workdir", str(project.path / work_dir)] if work_dir else []))
+     expected = project.path / work_dir if work_dir else Path("b")
+     assert expected == result.state.conf.core["work_dir"]
++
++
++def test_config_list_parameterized(conf_builder: ConfBuilder) -> None:
++    """Test that parameterized list[str] works correctly (Python 3.9+ syntax)."""
++    config_set = conf_builder("items = a\n  b\n  c")
++    config_set.add_config(keys="items", of_type=list[str], default=[], desc="items")
++    result = config_set["items"]
++    assert result == ["a", "b", "c"]
++
++
++def test_config_set_parameterized(conf_builder: ConfBuilder) -> None:
++    """Test that parameterized set[int] works correctly (Python 3.9+ syntax)."""
++    config_set = conf_builder("numbers = 1\n  2\n  3")
++    config_set.add_config(keys="numbers", of_type=set[int], default=set(), desc="numbers")
++    result = config_set["numbers"]
++    assert result == {1, 2, 3}
++
++
++def test_config_dict_parameterized(conf_builder: ConfBuilder) -> None:
++    """Test that parameterized dict[str, int] works correctly (Python 3.9+ syntax)."""
++    config_set = conf_builder("mapping = a=1\n  b=2\n  c=3")
++    config_set.add_config(keys="mapping", of_type=dict[str, int], default={}, desc="mapping")
++    result = config_set["mapping"]
++    assert result == OrderedDict([("a", 1), ("b", 2), ("c", 3)])
++
++
++def test_config_optional_parameterized(conf_builder: ConfBuilder) -> None:
++    """Test that parameterized Optional[int] works correctly (Python 3.9+ syntax)."""
++    config_set = conf_builder("")
++    config_set.add_config(keys="opt", of_type=Optional[int], default=None, desc="optional")
++    result = config_set["opt"]
++    assert result is None

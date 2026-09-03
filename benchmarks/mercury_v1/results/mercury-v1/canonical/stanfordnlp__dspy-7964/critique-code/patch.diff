@@ -1,0 +1,86 @@
+diff --git a/docs/mkdocs.yml b/docs/mkdocs.yml
+index 82ccd2ef4..00727ecf3 100644
+--- a/docs/mkdocs.yml
++++ b/docs/mkdocs.yml
+@@ -58,6 +58,7 @@ nav:
+         - Saving and Loading: tutorials/saving/index.md
+         - Deployment: tutorials/deployment/index.md
+         - Debugging & Observability: tutorials/observability/index.md
++        - Output Refinement: tutorials/output_refinement/index.md
+     - DSPy in Production: production/index.md
+     - Community:
+         - Community Resources: community/community-resources.md
+@@ -93,6 +94,8 @@ nav:
+             - Program: api/modules/Program.md
+             - ProgramOfThought: api/modules/ProgramOfThought.md
+             - ReAct: api/modules/ReAct.md
++            - BestOfN: api/modules/BestOfN.md
++            - Refine: api/modules/Refine.md
+         - Optimizers:
+             - BetterTogether: api/optimizers/BetterTogether.md
+             - BootstrapFewShot: api/optimizers/BootstrapFewShot.md
+diff --git a/dspy/predict/best_of_n.py b/dspy/predict/best_of_n.py
+index 452c86172..90b47d83c 100644
+--- a/dspy/predict/best_of_n.py
++++ b/dspy/predict/best_of_n.py
+@@ -1,19 +1,25 @@
+ import dspy
+ 
+ from .predict import Module
+-from typing import Callable
++from typing import Callable, Optional
+ 
+ 
+ class BestOfN(Module):
+-    def __init__(self, module, N: int, reward_fn: Callable, threshold: float):
++    def __init__(self, module, N: int, reward_fn: Callable, threshold: float, fail_count: Optional[int] = None):
+         """
+         Runs a module up to `N` times with different temperatures and returns the best prediction or the first prediction that passes the `threshold`.
+ 
++        This module runs the specified module multiple times with varying temperature settings and selects
++        either the first prediction that exceeds the specified threshold or the one with the highest reward.
++        The module automatically handles temperature variations across attempts and maintains proper tracing.
++
+         Args:
+             module: The module to run.
+             N: The number of times to run the module.
+-            reward_fn: The reward function.
+-            threshold: The threshold for the reward function.
++            reward_fn: The reward function that takes (kwargs, prediction) and returns a float score.
++            threshold: The threshold for the reward function. If a prediction meets this threshold, it is returned.
++            fail_count: Maximum number of failed attempts to tolerate. If not provided, defaults to N (allows all attempts to fail).
++                When the failure count exceeds this threshold, an exception is raised immediately.
+ 
+         Example:
+             >>> import dspy
+@@ -29,6 +35,7 @@ class BestOfN(Module):
+             *args)  # to prevent this from becoming a parameter
+         self.threshold = threshold
+         self.N = N
++        self.fail_count = fail_count if fail_count is not None else N  # default to N if fail_count is not provided
+ 
+     def forward(self, **kwargs):
+         lm = self.module.get_lm() or dspy.settings.lm
+@@ -37,7 +44,7 @@ class BestOfN(Module):
+         temps = list(dict.fromkeys(temps))[:self.N]
+         best_pred, best_trace, best_reward = None, None, -float("inf")
+ 
+-        for t in temps:
++        for idx, t in enumerate(temps):
+             lm_ = lm.copy(temperature=t)
+             mod = self.module.deepcopy()
+             mod.set_lm(lm_)
+@@ -57,7 +64,11 @@ class BestOfN(Module):
+                     break
+ 
+             except Exception as e:
+-                print(f"Attempt failed with temperature {t}: {e}")
++                print(f"BestOfN: Attempt failed with temperature {t}: {e}")
++                if idx >= self.fail_count:
++                    raise e
++                self.fail_count -= 1
+ 
+-        dspy.settings.trace.extend(best_trace)
++        if best_trace is not None:
++            dspy.settings.trace.extend(best_trace)
+         return best_pred

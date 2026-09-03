@@ -1,0 +1,153 @@
+diff --git a/docs/advanced.md b/docs/advanced.md
+index ecc7e3b..90992e6 100644
+--- a/docs/advanced.md
++++ b/docs/advanced.md
+@@ -392,6 +392,14 @@ be loaded programmatically again.
+ 
+ - Calls to `load_file` will be recorded on the inspect history and include module and line number.
+ 
++**new in 3.2.11**
++
++- You can bypass environment filtering by passing `env=False` to `load_file`. This loads all top-level variables directly from the file without applying any environment-specific logic or layers. Useful for loading environment-agnostic files.
++
++```python
++# Load file without environment filtering
++settings.load_file(path="/path/to/file.toml", env=False)
++```
+ 
+ ## Prefix filtering
+ 
+diff --git a/dynaconf/base.py b/dynaconf/base.py
+index 561ac16..c301a3c 100644
+--- a/dynaconf/base.py
++++ b/dynaconf/base.py
+@@ -1314,7 +1314,11 @@ class Settings:
+         - CWD
+ 
+         :param path: A single filename, a glob or a file list
+-        :param env: Which env to load from file (default current_env)
++        :param env: Which env to load from file (default current_env).
++            Set to False to bypass environment processing and load all top-level
++            variables directly without any environment filtering. This is useful
++            for loading files that should be treated as environment-agnostic.
++            Available from version 3.2.11.
+         :param silent: Should raise errors?
+         :param key: Load a single key?
+         :param validate: Should trigger validation?
+@@ -1327,7 +1331,13 @@ class Settings:
+         if validate is empty:
+             validate = self.get("VALIDATE_ON_UPDATE_FOR_DYNACONF")
+ 
+-        env = (env or self.current_env).upper()
++        # Map env=False to a special marker for environment-agnostic loading
++        if env is False:
++            env = "_envless"
++        elif env:
++            env = env.upper()
++        else:
++            env = self.current_env
+ 
+         # Using inspect take the filename and line number of the caller
+         # to be used in the source_metadata
+diff --git a/dynaconf/loaders/__init__.py b/dynaconf/loaders/__init__.py
+index 3d3985d..6438df2 100644
+--- a/dynaconf/loaders/__init__.py
++++ b/dynaconf/loaders/__init__.py
+@@ -355,13 +355,13 @@ def settings_loader(
+ 
+         # load from the current env e.g: development_settings.py
+         # counting on the case where env is a comma separated string
+-        env = env or obj.current_env
+-        if env and isinstance(env, str):
+-            for env_name in env.split(","):
+-                load_from_env_named_file(
+-                    obj, env_name, key, validate, identifier, mod_file
+-                )
+-
++        if env != "_envless":
++            env = env or obj.current_env
++            if env and isinstance(env, str):
++                for env_name in env.split(","):
++                    load_from_env_named_file(
++                        obj, env_name, key, validate, identifier, mod_file
++                    )
+ 
+ def load_from_env_named_file(obj, env, key, validate, identifier, mod_file):
+     """Load from env named file e.g: development_settings.py"""
+diff --git a/dynaconf/loaders/base.py b/dynaconf/loaders/base.py
+index e0ea23b..7ea6f01 100644
+--- a/dynaconf/loaders/base.py
++++ b/dynaconf/loaders/base.py
+@@ -75,14 +75,13 @@ class BaseLoader:
+                 files = [filename]
+         else:  # it is already a list/tuple
+             files = filename
+-
+         source_data = self.get_source_data(files)
+ 
+-        if self.obj.get("ENVIRONMENTS_FOR_DYNACONF") is False:
++        # Check for explicit env=False marker for environment-agnostic loading
++        if self.obj.get("ENVIRONMENTS_FOR_DYNACONF") is False or self.env == "_envless":
+             self._envless_load(source_data, silent, key)
+         else:
+             self._load_all_envs(source_data, silent, key)
+-
+     def get_source_data(self, files):
+         """Reads each file and returns source data for each file
+         {"path/to/file.ext": {"key": "value"}}
+diff --git a/tests/test_loaders.py b/tests/test_loaders.py
+index 466dc28..7eef5a3 100644
+--- a/tests/test_loaders.py
++++ b/tests/test_loaders.py
+@@ -37,3 +37,51 @@ def test_loaders_raise_on_syntax_error(file_factory, filename, silent):
+     settings = Dynaconf()
+     with pytest.raises(Exception):
+         settings.load_file(path=filepath, silent=silent)
++
++
++def test_load_file_env_false_bypasses_environment_filtering(file_factory):
++    """env=False bypasses environment filtering and loads all top-level variables."""
++    # Create file with environment sections
++    filepath = file_factory(
++        "test_env.toml",
++        """
++# Top level variables (should be loaded with env=False)
++APP_NAME = "MyApp"
++DEBUG = true
++
++[development]
++DB_HOST = "localhost"
++DB_PORT = 5432
++
++[production]
++DB_HOST = "prod.example.com"
++DB_PORT = 5433
++"""
++    )
++
++    # Load with environments enabled but env=False
++    settings = Dynaconf(environments=True)
++    settings.load_file(path=filepath, env=False)
++
++    # Top-level variables should be loaded
++    assert settings.get("APP_NAME") == "MyApp"
++    assert settings.get("DEBUG") is True
++
++
++def test_load_file_env_false_with_nonenv_file(file_factory):
++    """env=False works with files that have no environment sections."""
++    filepath = file_factory(
++        "simple.toml",
++        """
++API_KEY = "secret123"
++API_URL = "https://api.example.com"
++TIMEOUT = 30
++"""
++    )
++
++    settings = Dynaconf(environments=True)
++    settings.load_file(path=filepath, env=False)
++
++    assert settings.get("API_KEY") == "secret123"
++    assert settings.get("API_URL") == "https://api.example.com"
++    assert settings.get("TIMEOUT") == 30

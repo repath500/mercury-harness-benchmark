@@ -1,0 +1,59 @@
+diff --git a/src/tox/config/loader/convert.py b/src/tox/config/loader/convert.py
+index f7cf4e38..0100bef3 100644
+--- a/src/tox/config/loader/convert.py
++++ b/src/tox/config/loader/convert.py
+@@ -3,6 +3,7 @@ from __future__ import annotations
+ from abc import ABC, abstractmethod
+ from collections import OrderedDict
+ from pathlib import Path
++from types import GenericAlias
+ from typing import Any, Callable, Dict, Generic, Iterator, List, Literal, Optional, Set, TypeVar, Union, cast
+ 
+ from tox.config.types import Command, EnvList
+@@ -27,7 +28,9 @@ class Convert(ABC, Generic[T]):
+         :return: the converted type
+         """
+         from_module = getattr(of_type, "__module__", None)
+-        if from_module in {"typing", "typing_extensions"}:
++        is_typing = from_module in {"typing", "typing_extensions"}
++        is_generic_alias = isinstance(of_type, GenericAlias)
++        if is_typing or is_generic_alias:
+             return self._to_typing(raw, of_type, factory)
+         if issubclass(of_type, Path):
+             return self.to_path(raw)  # type: ignore[return-value]
+diff --git a/tests/config/test_sets.py b/tests/config/test_sets.py
+index c92eeeea..96f1c085 100644
+--- a/tests/config/test_sets.py
++++ b/tests/config/test_sets.py
+@@ -192,3 +192,31 @@ def test_config_work_dir(tox_project: ToxProjectCreator, work_dir: str) -> None:
+     result = project.run("c", *(["--workdir", str(project.path / work_dir)] if work_dir else []))
+     expected = project.path / work_dir if work_dir else Path("b")
+     assert expected == result.state.conf.core["work_dir"]
++
++
++def test_config_list_generic(conf_builder: ConfBuilder) -> None:
++    config_set = conf_builder("my_list = a,b,c")
++    config_set.add_config(keys="my_list", of_type=list[str], default=[], desc="my_list")
++    result = config_set["my_list"]
++    assert result == ["a", "b", "c"]
++
++
++def test_config_list_int_generic(conf_builder: ConfBuilder) -> None:
++    config_set = conf_builder("my_list = 1,2,3")
++    config_set.add_config(keys="my_list", of_type=list[int], default=[], desc="my_list")
++    result = config_set["my_list"]
++    assert result == [1, 2, 3]
++
++
++def test_config_dict_generic(conf_builder: ConfBuilder) -> None:
++    config_set = conf_builder("my_dict = a=1\n    b=2")
++    config_set.add_config(keys="my_dict", of_type=dict[str, int], default={}, desc="my_dict")
++    result = config_set["my_dict"]
++    assert result == OrderedDict([("a", 1), ("b", 2)])
++
++
++def test_config_set_generic(conf_builder: ConfBuilder) -> None:
++    config_set = conf_builder("my_set = a\n    b\n    c")
++    config_set.add_config(keys="my_set", of_type=set[str], default=set(), desc="my_set")
++    result = config_set["my_set"]
++    assert result == {"a", "b", "c"}

@@ -1,0 +1,888 @@
++ cd /testbed
++ pip install -e .
+Looking in indexes: https://pypi.tuna.tsinghua.edu.cn/simple
+Obtaining file:///testbed
+  Installing build dependencies: started
+  Installing build dependencies: finished with status 'done'
+  Checking if build backend supports build_editable: started
+  Checking if build backend supports build_editable: finished with status 'done'
+  Getting requirements to build editable: started
+  Getting requirements to build editable: finished with status 'done'
+  Preparing editable metadata (pyproject.toml): started
+  Preparing editable metadata (pyproject.toml): finished with status 'done'
+Building wheels for collected packages: dynaconf
+  Building editable for dynaconf (pyproject.toml): started
+  Building editable for dynaconf (pyproject.toml): finished with status 'done'
+  Created wheel for dynaconf: filename=dynaconf-3.3.0.dev0-0.editable-py3-none-any.whl size=14390 sha256=a6b0bd9b69a67482764c53df28b60ac0366cccee753461e11305806e87d78264
+  Stored in directory: /tmp/pip-ephem-wheel-cache-787uzcbg/wheels/7d/66/67/70d1ee2124ccf21d601c352e25cdca10f611f7c8b3f9ffb9e4
+Successfully built dynaconf
+Installing collected packages: dynaconf
+  Attempting uninstall: dynaconf
+    Found existing installation: dynaconf 3.3.0.dev0
+    Uninstalling dynaconf-3.3.0.dev0:
+      Successfully uninstalled dynaconf-3.3.0.dev0
+Successfully installed dynaconf-3.3.0.dev0
+WARNING: Running pip as the 'root' user can result in broken permissions and conflicting behaviour with the system package manager. It is recommended to use a virtual environment instead: https://pip.pypa.io/warnings/venv
+
+[notice] A new release of pip is available: 23.0.1 -> 26.0.1
+[notice] To update, run: pip install --upgrade pip
++ git checkout 82a3f61d1798a0048a2af76d5ea747d116765b62 tests/test_base.py
+Updated 0 paths from 40cb979
++ for path in tests/test_base.py
++ '[' -e tests/test_base.py ']'
++ git ls-files --error-unmatch -- tests/test_base.py
++ echo 'diff --git a/tests/test_base.py b/tests/test_base.py
+index 1111111..2222222 100644
+--- a/tests/test_base.py
++++ b/tests/test_base.py
+@@ -1033,6 +1033,50 @@ def test_from_env_method(clean_env, tmpdir):
+     assert settings.A_DEFAULT == "From default env"
+
+
++def test_envless_load_file(tmpdir):
++    """Ensure passing settings.load_file accepts env argument.
++
++    settings.load_file("filename.toml", env="development")
++    will load the default + development env.
++
++    settings.load_file("filename.toml", env=False|None)
++    will load in envless mode.
++
++    settings.load_file("filename.toml")
++    will respect the current env settings (normal mode).
++    """
++    data = {
++        "default": {"a_default": "From default env"},
++        "development": {"value": "From development env"},
++    }
++    toml_path = str(tmpdir.join("base_settings.toml"))
++    toml_loader.write(toml_path, data, merge=False)
++
++    data = {
++        "development": {"another_value": "Another development env"},
++    }
++    toml_path2 = str(tmpdir.join("base_settings2.toml"))
++    toml_loader.write(toml_path2, data, merge=False)
++
++    data = {"value": "Envless value"}
++    toml_path_envless = str(tmpdir.join("base_settings_envless.toml"))
++    toml_loader.write(toml_path_envless, data, merge=False)
++
++    settings = Dynaconf(
++        environments=["development", "other"], settings_file=toml_path
++    )
++    assert settings.VALUE == "From development env"
++    assert settings.A_DEFAULT == "From default env"
++
++    # load the env file normal way (respecting current env)
++    settings.load_file(toml_path2)
++    assert settings.ANOTHER_VALUE == "Another development env"
++
++    # load the envless file
++    settings.load_file(toml_path_envless, env=False)
++    assert settings.VALUE == "Envless value"
++
++
+ def test_from_env_method_with_prefix(clean_env, tmpdir):
+     data = {
+         "default": {"prefix_a_default": "From default env"},'
++ git apply --check /tmp/test_patch.diff
++ git apply /tmp/test_patch.diff
+++ mktemp
++ LOG_FILE=/tmp/tmp.615hGAngUX
++ export LOG_FILE
++ exec
++ exec
+++ tee /tmp/tmp.615hGAngUX
++ set +x
+........................................................................ [ 12%]
+........................................................................ [ 25%]
+........................................................................ [ 37%]
+........................................................................ [ 50%]
+...........................EEEEEEE....................................s. [ 62%]
+...............................x....s................................... [ 75%]
+........................................................................ [ 87%]
+......................................EEEEEEE.........................   [100%]
+=============================== warnings summary ===============================
+dynaconf/base.py:173
+  /testbed/dynaconf/base.py:173: DeprecationWarning: Usage of `from dynaconf import settings` is now DEPRECATED in 3.0.0+. You are encouraged to change it to your own instance e.g: `settings = Dynaconf(*options)`
+    warnings.warn(
+
+tests/test_typed.py:103
+  /testbed/tests/test_typed.py:103: DeprecationWarning: invalid escape sequence \[
+    msg = "plug.name must is_type_of.+Union\[str, int]"
+
+tests/test_typed.py:164
+  /testbed/tests/test_typed.py:164: DeprecationWarning: invalid escape sequence \[
+    msg = "numbers must is_type_of list\[typing.Union\[int, float, bool]]"
+
+tests/test_typed.py:829
+  /testbed/tests/test_typed.py:829: DeprecationWarning: invalid escape sequence \[
+    ValidationError, match="person.team must is_in \['A', 'B']"
+
+tests/test_typed.py:1069
+  /testbed/tests/test_typed.py:1069: DeprecationWarning: invalid escape sequence \[
+    match="colors must is_type_of.+list\[str]",
+
+tests/test_typed.py:1087
+  /testbed/tests/test_typed.py:1087: DeprecationWarning: invalid escape sequence \[
+    match="colors must is_type_of.+list\[str]",
+
+tests/test_typed.py:1120
+  /testbed/tests/test_typed.py:1120: DeprecationWarning: invalid escape sequence \[
+    match="colors must is_type_of.+Optional\[str]",
+
+dynaconf/typed/__init__.py:25
+  /testbed/dynaconf/typed/__init__.py:25: UserWarning: dynaconf.typed module is on tech preview stage. The feature will be fully supported on dynaconf>=4.0.0. The feature works and is heavily tested however the APIs and usage are subject to change.
+    warnings.warn(
+
+tests/test_base.py::test_clone_with_module_type
+  /testbed/dynaconf/utils/__init__.py:345: DeprecationWarning: You are using DYNACONF_NAMESPACE which is a deprecated settings replace it with ENV_FOR_DYNACONF
+    warnings.warn(
+
+tests/test_base.py::test_clone_with_module_type
+  /testbed/dynaconf/utils/__init__.py:345: DeprecationWarning: You are using NAMESPACE_FOR_DYNACONF which is a deprecated settings replace it with ENV_FOR_DYNACONF
+    warnings.warn(
+
+tests/test_base.py::test_clone_with_module_type
+  /testbed/dynaconf/utils/__init__.py:345: DeprecationWarning: You are using DYNACONF_SETTINGS_MODULE which is a deprecated settings replace it with SETTINGS_FILE_FOR_DYNACONF
+    warnings.warn(
+
+tests/test_base.py::test_clone_with_module_type
+  /testbed/dynaconf/utils/__init__.py:345: DeprecationWarning: You are using DYNACONF_SETTINGS which is a deprecated settings replace it with SETTINGS_FILE_FOR_DYNACONF
+    warnings.warn(
+
+tests/test_base.py::test_clone_with_module_type
+  /testbed/dynaconf/utils/__init__.py:345: DeprecationWarning: You are using SETTINGS_MODULE which is a deprecated settings replace it with SETTINGS_FILE_FOR_DYNACONF
+    warnings.warn(
+
+tests/test_base.py::test_clone_with_module_type
+  /testbed/dynaconf/utils/__init__.py:345: DeprecationWarning: You are using SETTINGS_MODULE_FOR_DYNACONF which is a deprecated settings replace it with SETTINGS_FILE_FOR_DYNACONF
+    warnings.warn(
+
+tests/test_base.py::test_clone_with_module_type
+  /testbed/dynaconf/utils/__init__.py:345: DeprecationWarning: You are using PROJECT_ROOT which is a deprecated settings replace it with ROOT_PATH_FOR_DYNACONF
+    warnings.warn(
+
+tests/test_base.py::test_clone_with_module_type
+  /testbed/dynaconf/utils/__init__.py:345: DeprecationWarning: You are using PROJECT_ROOT_FOR_DYNACONF which is a deprecated settings replace it with ROOT_PATH_FOR_DYNACONF
+    warnings.warn(
+
+tests/test_base.py::test_clone_with_module_type
+  /testbed/dynaconf/utils/__init__.py:345: DeprecationWarning: You are using DYNACONF_SILENT_ERRORS which is a deprecated settings replace it with SILENT_ERRORS_FOR_DYNACONF
+    warnings.warn(
+
+tests/test_base.py::test_clone_with_module_type
+  /testbed/dynaconf/utils/__init__.py:345: DeprecationWarning: You are using DYNACONF_ALWAYS_FRESH_VARS which is a deprecated settings replace it with FRESH_VARS_FOR_DYNACONF
+    warnings.warn(
+
+tests/test_base.py::test_clone_with_module_type
+  /testbed/dynaconf/utils/__init__.py:345: DeprecationWarning: You are using BASE_NAMESPACE_FOR_DYNACONF which is a deprecated settings replace it with DEFAULT_ENV_FOR_DYNACONF
+    warnings.warn(
+
+tests/test_base.py::test_clone_with_module_type
+  /testbed/dynaconf/utils/__init__.py:345: DeprecationWarning: You are using GLOBAL_ENV_FOR_DYNACONF which is a deprecated settings replace it with ENVVAR_PREFIX_FOR_DYNACONF
+    warnings.warn(
+
+tests/test_cli.py: 26 warnings
+  /testbed/dynaconf/cli.py:118: UserWarning: Starting on 3.x the param --instance/-i is now required. try passing it `dynaconf -i path.to.settings <cmd>` Example `dynaconf -i config.settings list` 
+    warnings.warn(
+
+tests/test_django.py::test_djdt_382
+  /usr/local/lib/python3.9/site-packages/django/conf/__init__.py:241: RemovedInDjango50Warning: The default value of USE_TZ will change from False to True in Django 5.0. Set USE_TZ to False in your project settings if you want to keep the current default behavior.
+    warnings.warn(
+
+tests/test_django.py::test_djdt_382
+tests/test_django.py::test_override_settings_596
+  /usr/local/lib/python3.9/site-packages/django/conf/__init__.py:193: RemovedInDjango51Warning: The DEFAULT_FILE_STORAGE setting is deprecated. Use STORAGES instead.
+    self._show_deprecation_warning(
+
+tests/test_django.py::test_djdt_382
+tests/test_django.py::test_override_settings_596
+  /usr/local/lib/python3.9/site-packages/django/conf/__init__.py:201: RemovedInDjango51Warning: The STATICFILES_STORAGE setting is deprecated. Use STORAGES instead.
+    self._show_deprecation_warning(
+
+tests/test_django.py::test_djdt_382
+tests/test_django.py::test_override_settings_596
+  /usr/local/lib/python3.9/site-packages/django/conf/__init__.py:178: RemovedInDjango50Warning: The USE_L10N setting is deprecated. Starting with Django 5.0, localized formatting of data will always be enabled. For example Django will display numbers and dates using the format of the current locale.
+    self._show_deprecation_warning(
+
+tests/test_flask.py::test_dynamic_load_exts_no_list
+  /testbed/dynaconf/contrib/flask_dynaconf.py:220: RuntimeWarning: Settings is missing EXTENSIONS to load Flask Extensions
+    warnings.warn(
+
+tests/test_ini_loader.py::test_multiple_filenames
+  /testbed/dynaconf/loaders/base.py:104: UserWarning: ini_loader: a.ini :[Errno 2] No such file or directory: 'a.ini'
+    warnings.warn(
+
+tests/test_ini_loader.py::test_multiple_filenames
+  /testbed/dynaconf/loaders/base.py:104: UserWarning: ini_loader: b.ini :[Errno 2] No such file or directory: 'b.ini'
+    warnings.warn(
+
+tests/test_ini_loader.py::test_multiple_filenames
+  /testbed/dynaconf/loaders/base.py:104: UserWarning: ini_loader: c.conf :[Errno 2] No such file or directory: 'c.conf'
+    warnings.warn(
+
+tests/test_ini_loader.py::test_multiple_filenames
+  /testbed/dynaconf/loaders/base.py:104: UserWarning: ini_loader: d.properties :[Errno 2] No such file or directory: 'd.properties'
+    warnings.warn(
+
+tests/test_json_loader.py::test_multiple_filenames
+  /testbed/dynaconf/loaders/base.py:104: UserWarning: json_loader: a.json :[Errno 2] No such file or directory: 'a.json'
+    warnings.warn(
+
+tests/test_json_loader.py::test_multiple_filenames
+  /testbed/dynaconf/loaders/base.py:104: UserWarning: json_loader: b.json :[Errno 2] No such file or directory: 'b.json'
+    warnings.warn(
+
+tests/test_json_loader.py::test_multiple_filenames
+  /testbed/dynaconf/loaders/base.py:104: UserWarning: json_loader: c.json :[Errno 2] No such file or directory: 'c.json'
+    warnings.warn(
+
+tests/test_json_loader.py::test_multiple_filenames
+  /testbed/dynaconf/loaders/base.py:104: UserWarning: json_loader: d.json :[Errno 2] No such file or directory: 'd.json'
+    warnings.warn(
+
+tests/test_toml_loader.py::test_multiple_filenames
+  /testbed/dynaconf/loaders/base.py:104: UserWarning: toml_loader: a.toml :[Errno 2] No such file or directory: 'a.toml'
+    warnings.warn(
+
+tests/test_toml_loader.py::test_multiple_filenames
+  /testbed/dynaconf/loaders/base.py:104: UserWarning: toml_loader: b.tml :[Errno 2] No such file or directory: 'b.tml'
+    warnings.warn(
+
+tests/test_toml_loader.py::test_multiple_filenames
+  /testbed/dynaconf/loaders/base.py:104: UserWarning: toml_loader: c.toml :[Errno 2] No such file or directory: 'c.toml'
+    warnings.warn(
+
+tests/test_toml_loader.py::test_multiple_filenames
+  /testbed/dynaconf/loaders/base.py:104: UserWarning: toml_loader: d.tml :[Errno 2] No such file or directory: 'd.tml'
+    warnings.warn(
+
+tests/test_utils.py::test_meta_values
+  /testbed/dynaconf/utils/parse_conf.py:73: UserWarning: [1, 2] does not need `@reset` anymore.
+    warnings.warn(f"{self.value} does not need `@reset` anymore.")
+
+tests/test_yaml_loader.py::test_extra_yaml
+tests/test_yaml_loader.py::test_using_env
+  /testbed/dynaconf/base.py:1439: UserWarning: The use of YAML var is deprecated, please define multiple filepaths instead: e.g: SETTINGS_FILE_FOR_DYNACONF = 'settings.py,settings.yaml,settings.toml' or INCLUDES_FOR_DYNACONF=['path.toml', 'folder/*']
+    warnings.warn(
+
+tests/test_yaml_loader.py::test_multiple_filenames
+  /testbed/dynaconf/loaders/base.py:104: UserWarning: yaml_loader: a.yaml :[Errno 2] No such file or directory: 'a.yaml'
+    warnings.warn(
+
+tests/test_yaml_loader.py::test_multiple_filenames
+  /testbed/dynaconf/loaders/base.py:104: UserWarning: yaml_loader: b.yml :[Errno 2] No such file or directory: 'b.yml'
+    warnings.warn(
+
+tests/test_yaml_loader.py::test_multiple_filenames
+  /testbed/dynaconf/loaders/base.py:104: UserWarning: yaml_loader: c.yaml :[Errno 2] No such file or directory: 'c.yaml'
+    warnings.warn(
+
+tests/test_yaml_loader.py::test_multiple_filenames
+  /testbed/dynaconf/loaders/base.py:104: UserWarning: yaml_loader: d.yml :[Errno 2] No such file or directory: 'd.yml'
+    warnings.warn(
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+=========================== short test summary info ============================
+PASSED tests/test_base.py::test_deleted_raise
+PASSED tests/test_base.py::test_delete_and_set_again
+PASSED tests/test_base.py::test_accepts_only_upper
+PASSED tests/test_base.py::test_populate_obj
+PASSED tests/test_base.py::test_populate_obj_with_keys
+PASSED tests/test_base.py::test_populate_obj_with_ignore
+PASSED tests/test_base.py::test_populate_obj_convert_to_dict
+PASSED tests/test_base.py::test_call_works_as_get
+PASSED tests/test_base.py::test_keys_are_equal
+PASSED tests/test_base.py::test_values_are_equal
+PASSED tests/test_base.py::test_get_env
+PASSED tests/test_base.py::test_float
+PASSED tests/test_base.py::test_int
+PASSED tests/test_base.py::test_bool
+PASSED tests/test_base.py::test_as_json
+PASSED tests/test_base.py::test_env_should_be_string
+PASSED tests/test_base.py::test_env_should_allow_underline
+PASSED tests/test_base.py::test_path_for
+PASSED tests/test_base.py::test_get_item
+PASSED tests/test_base.py::test_set_item
+PASSED tests/test_base.py::test_set
+PASSED tests/test_base.py::test_global_set_merge
+PASSED tests/test_base.py::test_global_set_merge_false
+PASSED tests/test_base.py::test_global_merge_shortcut
+PASSED tests/test_base.py::test_local_set_merge_dict
+PASSED tests/test_base.py::test_local_set_merge_list
+PASSED tests/test_base.py::test_local_set_merge_list_unique
+PASSED tests/test_base.py::test_local_set_merge_false_dict
+PASSED tests/test_base.py::test_set_explicit_merge_token
+PASSED tests/test_base.py::test_set_new_merge_issue_241_1
+PASSED tests/test_base.py::test_set_new_merge_issue_241_2
+PASSED tests/test_base.py::test_set_new_merge_issue_241_3
+PASSED tests/test_base.py::test_set_new_merge_issue_241_4
+PASSED tests/test_base.py::test_set_new_merge_issue_241_5
+PASSED tests/test_base.py::test_set_insert_token
+PASSED tests/test_base.py::test_set_with_non_str_types
+PASSED tests/test_base.py::test_set_with_non_str_types_on_first_level
+PASSED tests/test_base.py::test_exists
+PASSED tests/test_base.py::test_dotted_traversal_access
+PASSED tests/test_base.py::test_dotted_set
+PASSED tests/test_base.py::test_dotted_set_with_indexing
+PASSED tests/test_base.py::test_dotted_set_with_merge
+PASSED tests/test_base.py::test_from_env_method
+PASSED tests/test_base.py::test_envless_load_file
+PASSED tests/test_base.py::test_from_env_method_with_prefix
+PASSED tests/test_base.py::test_preload
+PASSED tests/test_base.py::test_config_aliases
+PASSED tests/test_base.py::test_envless_mode
+PASSED tests/test_base.py::test_envless_mode_with_prefix
+PASSED tests/test_base.py::test_lowercase_read_mode
+PASSED tests/test_base.py::test_settings_dict_like_iteration
+PASSED tests/test_base.py::test_prefix_is_not_str_raises
+PASSED tests/test_base.py::test_clone
+PASSED tests/test_base.py::test_clone_with_module_type
+PASSED tests/test_base.py::test_wrap_existing_settings
+PASSED tests/test_base.py::test_wrap_existing_settings_clone
+PASSED tests/test_base.py::test_list_entries_from_yaml_should_not_duplicate_when_merged
+PASSED tests/test_base.py::test_update__validate_on_update_is_false[simple-value]
+PASSED tests/test_base.py::test_update__validate_on_update_is_false[dunder-value]
+PASSED tests/test_base.py::test_update__validate_on_update_is_true[simple-value]
+PASSED tests/test_base.py::test_update__validate_on_update_is_true[dunder-value]
+PASSED tests/test_base.py::test_update__validate_on_update_is_str_all
+PASSED tests/test_base.py::test_set__validate_on_update_is_false
+PASSED tests/test_base.py::test_set__validate_on_update_is_true
+PASSED tests/test_base.py::test_set__validate_on_update_is_str_all
+PASSED tests/test_base.py::test_load_file__validate_on_update_is_false[load-toml]
+PASSED tests/test_base.py::test_load_file__validate_on_update_is_false[load-ini]
+PASSED tests/test_base.py::test_load_file__validate_on_update_is_false[load-yaml]
+PASSED tests/test_base.py::test_load_file__validate_on_update_is_false[load-json]
+PASSED tests/test_base.py::test_load_file__validate_on_update_is_false[load-py]
+PASSED tests/test_base.py::test_load_file__validate_on_update_is_true[load-toml]
+PASSED tests/test_base.py::test_load_file__validate_on_update_is_true[load-ini]
+PASSED tests/test_base.py::test_load_file__validate_on_update_is_true[load-yaml]
+PASSED tests/test_base.py::test_load_file__validate_on_update_is_true[load-json]
+PASSED tests/test_base.py::test_load_file__validate_on_update_is_true[load-py]
+PASSED tests/test_base.py::test_load_file__validate_on_update_is_str_all[load-toml]
+PASSED tests/test_base.py::test_load_file__validate_on_update_is_str_all[load-ini]
+PASSED tests/test_base.py::test_load_file__validate_on_update_is_str_all[load-yaml]
+PASSED tests/test_base.py::test_load_file__validate_on_update_is_str_all[load-json]
+PASSED tests/test_base.py::test_load_file__validate_on_update_is_str_all[load-py]
+PASSED tests/test_base.py::test_get_with_sysenv_fallback_global_as_false
+PASSED tests/test_base.py::test_get_with_sysenv_fallback_global_as_true
+PASSED tests/test_base.py::test_get_with_sysenv_fallback_global_as_list
+PASSED tests/test_base.py::test_get_with_sysenv_fallback_local_overrides
+PASSED tests/test_base.py::test_no_extra_values_in_nested_structure
+PASSED tests/test_base.py::test_environ_dotted_set_with_index
+PASSED tests/test_basic.py::test_has_wrapped
+PASSED tests/test_cli.py::test_version
+PASSED tests/test_cli.py::test_help
+PASSED tests/test_cli.py::test_banner
+PASSED tests/test_cli.py::test_init_with_instance_raises
+PASSED tests/test_cli.py::test_init_with_env_warns
+PASSED tests/test_cli.py::test_init_with_path[ini]
+PASSED tests/test_cli.py::test_init_with_path[toml]
+PASSED tests/test_cli.py::test_init_with_path[yaml]
+PASSED tests/test_cli.py::test_init_with_path[json]
+PASSED tests/test_cli.py::test_init_with_path[py]
+PASSED tests/test_cli.py::test_init_with_path[env]
+PASSED tests/test_cli.py::test_list
+PASSED tests/test_cli.py::test_not_found_key_exit_error[list]
+PASSED tests/test_cli.py::test_not_found_key_exit_error[inspect]
+PASSED tests/test_cli.py::test_not_found_key_exit_error[get]
+PASSED tests/test_cli.py::test_get
+PASSED tests/test_cli.py::test_negative_get
+PASSED tests/test_cli.py::test_get_json_dict
+PASSED tests/test_cli.py::test_get_lower
+PASSED tests/test_cli.py::test_get_unparsed
+PASSED tests/test_cli.py::test_get_with_default
+PASSED tests/test_cli.py::test_get_other_env
+PASSED tests/test_cli.py::test_help_dont_require_instance
+PASSED tests/test_cli.py::test_list_export_json
+PASSED tests/test_cli.py::test_list_prints_json
+PASSED tests/test_cli.py::test_list_with_all
+PASSED tests/test_cli.py::test_list_with_loader[ini]
+PASSED tests/test_cli.py::test_list_with_loader[toml]
+PASSED tests/test_cli.py::test_list_with_loader[yaml]
+PASSED tests/test_cli.py::test_list_with_loader[json]
+PASSED tests/test_cli.py::test_list_with_loader[py]
+PASSED tests/test_cli.py::test_list_with_loader[redis]
+PASSED tests/test_cli.py::test_list_with_loader[vault]
+PASSED tests/test_cli.py::test_list_with_loader[env]
+PASSED tests/test_cli.py::test_list_with_env[default]
+PASSED tests/test_cli.py::test_list_with_env[development]
+PASSED tests/test_cli.py::test_list_with_instance
+PASSED tests/test_cli.py::test_list_with_instance_from_env
+PASSED tests/test_cli.py::test_instance_attribute_error
+PASSED tests/test_cli.py::test_instance_import_error
+PASSED tests/test_cli.py::test_instance_pypath_error
+PASSED tests/test_cli.py::test_list_with_key
+PASSED tests/test_cli.py::test_list_with_invalid_key
+PASSED tests/test_cli.py::test_list_with_key_export_json
+PASSED tests/test_cli.py::test_list_with_missing_key
+PASSED tests/test_cli.py::test_write[True-default-ini]
+PASSED tests/test_cli.py::test_write[True-default-toml]
+PASSED tests/test_cli.py::test_write[True-default-yaml]
+PASSED tests/test_cli.py::test_write[True-default-json]
+PASSED tests/test_cli.py::test_write[True-default-py]
+PASSED tests/test_cli.py::test_write[True-default-env]
+PASSED tests/test_cli.py::test_write[True-development-ini]
+PASSED tests/test_cli.py::test_write[True-development-toml]
+PASSED tests/test_cli.py::test_write[True-development-yaml]
+PASSED tests/test_cli.py::test_write[True-development-json]
+PASSED tests/test_cli.py::test_write[True-development-py]
+PASSED tests/test_cli.py::test_write[True-development-env]
+PASSED tests/test_cli.py::test_write[False-default-ini]
+PASSED tests/test_cli.py::test_write[False-default-toml]
+PASSED tests/test_cli.py::test_write[False-default-yaml]
+PASSED tests/test_cli.py::test_write[False-default-json]
+PASSED tests/test_cli.py::test_write[False-default-py]
+PASSED tests/test_cli.py::test_write[False-default-env]
+PASSED tests/test_cli.py::test_write[False-development-ini]
+PASSED tests/test_cli.py::test_write[False-development-toml]
+PASSED tests/test_cli.py::test_write[False-development-yaml]
+PASSED tests/test_cli.py::test_write[False-development-json]
+PASSED tests/test_cli.py::test_write[False-development-py]
+PASSED tests/test_cli.py::test_write[False-development-env]
+PASSED tests/test_cli.py::test_write_dotenv[.env]
+PASSED tests/test_cli.py::test_write_dotenv[./.env]
+PASSED tests/test_cli.py::test_validate
+PASSED tests/test_cli.py::test_inspect_no_args
+PASSED tests/test_cli.py::test_inspect_yaml_format
+PASSED tests/test_cli.py::test_inspect_key_filter
+PASSED tests/test_cli.py::test_inspect_env_filter
+PASSED tests/test_cli.py::test_inspect_limit
+PASSED tests/test_cli.py::test_inspect_all_args
+PASSED tests/test_cli.py::test_inspect_invalid_key
+PASSED tests/test_cli.py::test_inspect_invalid_env
+PASSED tests/test_cli.py::test_inspect_invalid_format
+PASSED tests/test_compat.py::test_dynaconf_namespace_renamed[DYNACONF_NAMESPACE-FOO-ENV_FOR_DYNACONF]
+PASSED tests/test_compat.py::test_dynaconf_namespace_renamed[NAMESPACE_FOR_DYNACONF-FOO-ENV_FOR_DYNACONF]
+PASSED tests/test_compat.py::test_dynaconf_namespace_renamed[DYNACONF_SETTINGS_MODULE-dfoo.py-SETTINGS_FILE_FOR_DYNACONF]
+PASSED tests/test_compat.py::test_dynaconf_namespace_renamed[SETTINGS_MODULE-dfoo.py-SETTINGS_FILE_FOR_DYNACONF]
+PASSED tests/test_compat.py::test_dynaconf_namespace_renamed[PROJECT_ROOT-./-ROOT_PATH_FOR_DYNACONF]
+PASSED tests/test_compat.py::test_dynaconf_namespace_renamed[DYNACONF_SILENT_ERRORS-True-SILENT_ERRORS_FOR_DYNACONF]
+PASSED tests/test_compat.py::test_dynaconf_namespace_renamed[DYNACONF_ALWAYS_FRESH_VARS-value6-FRESH_VARS_FOR_DYNACONF]
+PASSED tests/test_compat.py::test_dynaconf_namespace_renamed[GLOBAL_ENV_FOR_DYNACONF-MYAPP-ENVVAR_PREFIX_FOR_DYNACONF]
+PASSED tests/test_compat.py::test_dynaconf_namespace_renamed[BASE_NAMESPACE_FOR_DYNACONF-THIS-DEFAULT_ENV_FOR_DYNACONF]
+PASSED tests/test_compat.py::test_envvar_prefix_for_dynaconf
+PASSED tests/test_django.py::test_djdt_382
+PASSED tests/test_django.py::test_override_settings_596
+PASSED tests/test_dynabox.py::test_named_tuple_is_not_transformed
+PASSED tests/test_dynabox.py::test_datatypes
+PASSED tests/test_dynabox.py::test_access_lowercase
+PASSED tests/test_dynabox.py::test_access_uppercase
+PASSED tests/test_dynabox.py::test_access_items
+PASSED tests/test_dynabox.py::test_access_items_lower
+PASSED tests/test_dynabox.py::test_get
+PASSED tests/test_dynabox.py::test_copy_no_cause_inf_recursion
+PASSED tests/test_dynabox.py::test_accessing_dynabox_inside_boxlist_inside_dynabox
+PASSED tests/test_endtoend.py::test_end_to_end
+PASSED tests/test_endtoend.py::test_boxed_data
+PASSED tests/test_endtoend.py::test_boxed_data_call
+PASSED tests/test_env_loader.py::test_write
+PASSED tests/test_env_loader.py::test_env_loader
+PASSED tests/test_env_loader.py::test_single_key
+PASSED tests/test_env_loader.py::test_dotenv_loader
+PASSED tests/test_env_loader.py::test_get_fresh
+PASSED tests/test_env_loader.py::test_always_fresh
+PASSED tests/test_env_loader.py::test_fresh_context
+PASSED tests/test_env_loader.py::test_cleaner
+PASSED tests/test_env_loader.py::test_empty_string_prefix
+PASSED tests/test_env_loader.py::test_no_prefix
+PASSED tests/test_env_loader.py::test_none_as_string_prefix
+PASSED tests/test_env_loader.py::test_backwards_compat_using_env_argument
+PASSED tests/test_env_loader.py::test_load_signed_integer
+PASSED tests/test_env_loader.py::test_env_is_not_str_raises
+PASSED tests/test_env_loader.py::test_can_load_in_to_dict
+PASSED tests/test_env_loader.py::test_load_dunder
+PASSED tests/test_env_loader.py::test_filtering_unknown_variables
+PASSED tests/test_env_loader.py::test_filtering_unknown_variables_with_prefix
+PASSED tests/test_env_loader.py::test_boolean_fix
+PASSED tests/test_envvar_prefix.py::test_envvar_prefix_lazysettings
+PASSED tests/test_envvar_prefix.py::test_envvar_prefix_false_from_envvar
+PASSED tests/test_feature_flag.py::test_feature_flag
+PASSED tests/test_flask.py::test_named_tuple_config
+PASSED tests/test_flask.py::test_named_tuple_config_using_initapp
+PASSED tests/test_flask.py::test_dynamic_load_exts
+PASSED tests/test_flask.py::test_dynamic_load_entry_point
+PASSED tests/test_flask.py::test_dynamic_load_exts_list
+PASSED tests/test_flask.py::test_dynamic_load_exts_no_list
+PASSED tests/test_flask.py::test_flask_dynaconf
+PASSED tests/test_flask.py::test_flask_with_dot_env
+PASSED tests/test_flask.py::test_flask_dotenv_cli
+PASSED tests/test_flask.py::test_setting_instance_options_works_case_insensitive
+PASSED tests/test_flask.py::test_compatibility_mode
+PASSED tests/test_hooking.py::test_hook_dynaconf_class_get_templated
+PASSED tests/test_hooking.py::test_hook_dynaconf_class_after_get
+PASSED tests/test_hooking.py::test_hooked_dict
+PASSED tests/test_hooking.py::test_hooked_dict_store
+PASSED tests/test_hooking.py::test_hook_before_and_after_bypass_method
+PASSED tests/test_hooking.py::test_hook_runs_after_method
+PASSED tests/test_hooking.py::test_hook_fail_with_wrong_parameters
+PASSED tests/test_hooking.py::test_hook_values
+PASSED tests/test_ini_loader.py::test_load_from_ini
+PASSED tests/test_ini_loader.py::test_load_from_multiple_ini
+PASSED tests/test_ini_loader.py::test_no_filename_is_none
+PASSED tests/test_ini_loader.py::test_key_error_on_invalid_env
+PASSED tests/test_ini_loader.py::test_no_key_error_on_invalid_env
+PASSED tests/test_ini_loader.py::test_load_single_key
+PASSED tests/test_ini_loader.py::test_empty_value
+PASSED tests/test_ini_loader.py::test_multiple_filenames
+PASSED tests/test_ini_loader.py::test_cleaner
+PASSED tests/test_ini_loader.py::test_using_env
+PASSED tests/test_ini_loader.py::test_load_dunder
+PASSED tests/test_ini_loader.py::test_envless
+PASSED tests/test_ini_loader.py::test_prefix
+PASSED tests/test_inspect.py::test_ensure_serializable
+PASSED tests/test_inspect.py::test_get_data_by_key
+PASSED tests/test_inspect.py::test_get_history_general
+PASSED tests/test_inspect.py::test_get_history_env_false__file_plus_envvar
+PASSED tests/test_inspect.py::test_get_history_env_false__val_default_plus_envvar
+PASSED tests/test_inspect.py::test_get_history_env_false__merge_marks
+PASSED tests/test_inspect.py::test_get_history_env_true__file_plus_envvar
+PASSED tests/test_inspect.py::test_get_history_env_true__val_default_plus_file
+PASSED tests/test_inspect.py::test_get_history_env_true__merge_marks
+PASSED tests/test_inspect.py::test_get_history_key_filter
+PASSED tests/test_inspect.py::test_get_history_key_filter_nested
+PASSED tests/test_inspect.py::test_get_history_env_filter
+PASSED tests/test_inspect.py::test_get_history_env_and_key_filter
+PASSED tests/test_inspect.py::tests_get_history_with_variable_interpolation
+PASSED tests/test_inspect.py::test_caveat__get_history_env_true
+PASSED tests/test_inspect.py::test_caveat__get_history_env_true_workaround
+PASSED tests/test_inspect.py::test_inspect_key_filter
+PASSED tests/test_inspect.py::test_inspect_no_filter
+PASSED tests/test_inspect.py::test_inspect_env_filter
+PASSED tests/test_inspect.py::test_inspect_to_file
+PASSED tests/test_inspect.py::test_inspect_exception_key_not_found
+PASSED tests/test_inspect.py::test_inspect_empty_settings
+PASSED tests/test_inspect.py::test_inspect_exception_env_not_found
+PASSED tests/test_inspect.py::test_inspect_exception_invalid_format
+PASSED tests/test_inspect.py::test_get_debug_info
+PASSED tests/test_json_loader.py::test_load_from_json
+PASSED tests/test_json_loader.py::test_load_from_multiple_json
+PASSED tests/test_json_loader.py::test_no_filename_is_none
+PASSED tests/test_json_loader.py::test_key_error_on_invalid_env
+PASSED tests/test_json_loader.py::test_no_key_error_on_invalid_env
+PASSED tests/test_json_loader.py::test_load_single_key
+PASSED tests/test_json_loader.py::test_empty_value
+PASSED tests/test_json_loader.py::test_multiple_filenames
+PASSED tests/test_json_loader.py::test_cleaner
+PASSED tests/test_json_loader.py::test_using_env
+PASSED tests/test_json_loader.py::test_load_dunder
+PASSED tests/test_json_loader.py::test_dynaconf_encoder
+PASSED tests/test_json_loader.py::test_envless
+PASSED tests/test_json_loader.py::test_prefix
+PASSED tests/test_loaders.py::test_loaders_raise_on_syntax_error[f.yml-True]
+PASSED tests/test_loaders.py::test_loaders_raise_on_syntax_error[f.yml-False]
+PASSED tests/test_loaders.py::test_loaders_raise_on_syntax_error[f.toml-True]
+PASSED tests/test_loaders.py::test_loaders_raise_on_syntax_error[f.toml-False]
+PASSED tests/test_loaders.py::test_loaders_raise_on_syntax_error[f.ini-True]
+PASSED tests/test_loaders.py::test_loaders_raise_on_syntax_error[f.ini-False]
+PASSED tests/test_loaders.py::test_loaders_raise_on_syntax_error[f.py-True]
+PASSED tests/test_loaders.py::test_loaders_raise_on_syntax_error[f.py-False]
+PASSED tests/test_loaders.py::test_loaders_raise_on_syntax_error[f.json-True]
+PASSED tests/test_loaders.py::test_loaders_raise_on_syntax_error[f.json-False]
+PASSED tests/test_nested_loading.py::test_invalid_include_path
+PASSED tests/test_nested_loading.py::test_load_nested_toml
+PASSED tests/test_nested_loading.py::test_load_nested_different_types[toml]
+PASSED tests/test_nested_loading.py::test_load_nested_different_types[json]
+PASSED tests/test_nested_loading.py::test_load_nested_different_types[yaml]
+PASSED tests/test_nested_loading.py::test_load_nested_different_types[ini]
+PASSED tests/test_nested_loading.py::test_load_nested_different_types[py]
+PASSED tests/test_nested_loading.py::test_load_nested_different_types_with_merge
+PASSED tests/test_nested_loading.py::test_programmatically_file_load
+PASSED tests/test_nested_loading.py::test_include_via_python_module_name
+PASSED tests/test_nested_loading.py::test_include_via_python_module_name_and_others
+PASSED tests/test_py_loader.py::test_py_loader_from_file
+PASSED tests/test_py_loader.py::test_py_loader_from_module
+PASSED tests/test_py_loader.py::test_try_to_load_from_py_module_name
+PASSED tests/test_py_loader.py::test_negative_try_to_load_from_py_module_name
+PASSED tests/test_py_loader.py::test_silently_try_to_load_from_py_module_name
+PASSED tests/test_py_loader.py::test_py_loader_from_file_dunder
+PASSED tests/test_py_loader.py::test_decorated_hooks
+PASSED tests/test_py_loader.py::test_post_load_hooks
+PASSED tests/test_redis.py::test_redis_not_configured
+PASSED tests/test_settings_loader.py::test_load_using_settings_loader
+PASSED tests/test_settings_loader.py::test_load_using_settings_loader_with_environments
+PASSED tests/test_settings_loader.py::test_load_using_settings_loader_with_temporary_env
+PASSED tests/test_settings_loader.py::test_load_using_settings_loader_with_multi_temporary_env
+PASSED tests/test_settings_loader.py::test_load_using_settings_loader_with_set_env
+PASSED tests/test_settings_loader.py::test_load_using_settings_loader_with_one_env_named_file_module_path
+PASSED tests/test_settings_loader.py::test_load_using_settings_loader_with_one_env_named_file_file_path
+PASSED tests/test_settings_loader.py::test_load_using_settings_loader_with_one_env_named_file_module_path_multi_env
+PASSED tests/test_settings_loader.py::test_load_using_settings_loader_with_one_env_named_file_file_path_multi_env
+PASSED tests/test_toml_loader.py::test_load_from_toml_with_multiple_envs
+PASSED tests/test_toml_loader.py::test_load_from_toml_with_invalid_unicode
+PASSED tests/test_toml_loader.py::test_load_from_toml
+PASSED tests/test_toml_loader.py::test_load_from_multiple_toml
+PASSED tests/test_toml_loader.py::test_no_filename_is_none
+PASSED tests/test_toml_loader.py::test_key_error_on_invalid_env
+PASSED tests/test_toml_loader.py::test_no_key_error_on_invalid_env
+PASSED tests/test_toml_loader.py::test_load_single_key
+PASSED tests/test_toml_loader.py::test_empty_value
+PASSED tests/test_toml_loader.py::test_multiple_filenames
+PASSED tests/test_toml_loader.py::test_cleaner
+PASSED tests/test_toml_loader.py::test_using_env
+PASSED tests/test_toml_loader.py::test_load_dunder
+PASSED tests/test_toml_loader.py::test_encode_nulls
+PASSED tests/test_toml_loader.py::test_envless
+PASSED tests/test_toml_loader.py::test_prefix
+PASSED tests/test_typed.py::test_immediate_validation
+PASSED tests/test_typed.py::test_lazy_validation_with_options
+PASSED tests/test_typed.py::test_validator_from_types
+PASSED tests/test_typed.py::test_default_value_from_types
+PASSED tests/test_typed.py::test_options_contains_only_valid_and_set_attributes
+PASSED tests/test_typed.py::test_enclosed_type_raises_for_invalid_enclosed
+PASSED tests/test_typed.py::test_union_enclosed_type_raises_for_invalid_enclosed
+PASSED tests/test_typed.py::test_annotated_with_dictvalue
+PASSED tests/test_typed.py::test_enclosed_forbidden_with_more_than_one_arg
+PASSED tests/test_typed.py::test_enclosed_type_validates
+PASSED tests/test_typed.py::test_union_type_validates
+PASSED tests/test_typed.py::test_union_enclosed_type_validates_type
+PASSED tests/test_typed.py::test_union_enclosed_type_validates_operation
+PASSED tests/test_typed.py::test_union_enclosed_type_validates_items_operations
+PASSED tests/test_typed.py::test_union_enclosed_type_works
+PASSED tests/test_typed.py::test_union_enclosed_type_raises_validation
+PASSED tests/test_typed.py::test_deeply_enclosed_type_validates
+PASSED tests/test_typed.py::test_deeply_enclosed_type_validates_with_bare_dict
+PASSED tests/test_typed.py::test_deeply_enclosed_type_validates_with_parameterized_dict
+PASSED tests/test_typed.py::test_deeply_enclosed_type_validates_with_bare_type
+PASSED tests/test_typed.py::test_deeply_enclosed_type_validates_with_bare_type_allows_empty
+PASSED tests/test_typed.py::test_sub_types_works
+PASSED tests/test_typed.py::test_sub_types_fail_validation
+PASSED tests/test_typed.py::test_deeply_dictvalue_fail_validation
+PASSED tests/test_typed.py::test_dynaconf_options
+PASSED tests/test_typed.py::test_eager_validation
+PASSED tests/test_typed.py::test_lazy_validation
+PASSED tests/test_typed.py::test_validate_based_on_type_annotation
+PASSED tests/test_typed.py::test_only_supported_types_can_be_used
+PASSED tests/test_typed.py::test_dictvalue_subtype
+PASSED tests/test_typed.py::test_default_based_on_type_annotation
+PASSED tests/test_typed.py::test_extracted_validators_from_annotated
+PASSED tests/test_typed.py::test_some_arguments_forbid_on_validators[{'required': True}]
+PASSED tests/test_typed.py::test_some_arguments_forbid_on_validators[{'must_exist': True}]
+PASSED tests/test_typed.py::test_some_arguments_forbid_on_validators[{'is_type_of': <class 'int'>}]
+PASSED tests/test_typed.py::test_some_arguments_forbid_on_validators[{'default': 42}]
+PASSED tests/test_typed.py::test_some_arguments_forbid_on_validators[('name',)]
+PASSED tests/test_typed.py::test_annotated_accepts_only_supported_types
+PASSED tests/test_typed.py::test_annotated_args_must_be_only_validators
+PASSED tests/test_typed.py::test_all_kinds_of_union
+PASSED tests/test_typed.py::test_optional_types
+PASSED tests/test_typed.py::test_notrequired
+PASSED tests/test_typed.py::test_list_enclosed_type_is_required
+PASSED tests/test_typed.py::test_list_enclosed_type_with_union
+PASSED tests/test_typed.py::test_list_enclosed_type_outer_union
+PASSED tests/test_typed.py::test_list_enclosed_type_annotated
+PASSED tests/test_typed.py::test_list_enclosed_type_annotated_with_union
+PASSED tests/test_typed.py::test_list_enclosed_type_annotated_with_union_nested
+PASSED tests/test_typed.py::test_list_enclosed_type_with_more_complex_unions
+PASSED tests/test_typed.py::test_list_enclosed_type_crazy_type
+PASSED tests/test_typed.py::test_list_enclosed_type_annotated_notrequired
+PASSED tests/test_typed.py::test_list_enclosed_type_notrequired
+PASSED tests/test_typed.py::test_list_enclosed_type_with_default
+PASSED tests/test_typed.py::test_list_enclosed_type_with_optional
+PASSED tests/test_typed.py::test_usage_of_dict_value
+PASSED tests/test_utils.py::test_isnamedtupleinstance
+PASSED tests/test_utils.py::test_unparse
+PASSED tests/test_utils.py::test_cast_bool
+PASSED tests/test_utils.py::test_find_file
+PASSED tests/test_utils.py::test_casting_str
+PASSED tests/test_utils.py::test_casting_int
+PASSED tests/test_utils.py::test_casting_float
+PASSED tests/test_utils.py::test_casting_bool
+PASSED tests/test_utils.py::test_casting_json
+PASSED tests/test_utils.py::test_disable_cast
+PASSED tests/test_utils.py::test_disable_cast_on_instance
+PASSED tests/test_utils.py::test_tomlfy
+PASSED tests/test_utils.py::test_tomlfy_unparsable[something=42]
+PASSED tests/test_utils.py::test_missing_sentinel
+PASSED tests/test_utils.py::test_meta_values
+PASSED tests/test_utils.py::test_merge_existing_list
+PASSED tests/test_utils.py::test_merge_existing_list_unique
+PASSED tests/test_utils.py::test_merge_existing_dict
+PASSED tests/test_utils.py::test_merge_dict_with_meta_values
+PASSED tests/test_utils.py::test_trimmed_split
+PASSED tests/test_utils.py::test_ensure_a_list
+PASSED tests/test_utils.py::test_ensure_upperfied_list
+PASSED tests/test_utils.py::test_get_local_filename
+PASSED tests/test_utils.py::test_upperfy
+PASSED tests/test_utils.py::test_lazy_format_class
+PASSED tests/test_utils.py::test_evaluate_lazy_format_decorator
+PASSED tests/test_utils.py::test_lazy_format_on_settings
+PASSED tests/test_utils.py::test_lazy_format_class_jinja
+PASSED tests/test_utils.py::test_evaluate_lazy_format_decorator_jinja
+PASSED tests/test_utils.py::test_lazy_format_on_settings_jinja
+PASSED tests/test_utils.py::test_lazy_format_is_json_serializable
+PASSED tests/test_utils.py::test_try_to_encode
+PASSED tests/test_utils.py::test_del_raises_on_unwrap
+PASSED tests/test_utils.py::test_extract_json
+PASSED tests/test_utils.py::test_env_list
+PASSED tests/test_utils.py::test_add_converter_path_example
+PASSED tests/test_utils.py::test_boolean_fix
+PASSED tests/test_utils.py::test_get_converter
+PASSED tests/test_utils.py::test_get_converter_error_when_converting
+PASSED tests/test_utils.py::test_prepare_json[input_expected0]
+PASSED tests/test_utils.py::test_prepare_json[input_expected1]
+PASSED tests/test_utils.py::test_prepare_json[input_expected2]
+PASSED tests/test_utils.py::test_prepare_json[input_expected3]
+PASSED tests/test_utils.py::test_prepare_json[input_expected4]
+PASSED tests/test_utils.py::test_prepare_json[input_expected5]
+PASSED tests/test_utils.py::test_prepare_json[input_expected6]
+PASSED tests/test_validators.py::test_validators_on_init
+PASSED tests/test_validators.py::test_validators_register
+PASSED tests/test_validators.py::test_dotted_validators
+PASSED tests/test_validators.py::test_validation_error[validator_instance0]
+PASSED tests/test_validators.py::test_validation_error[validator_instance1]
+PASSED tests/test_validators.py::test_validation_error[validator_instance2]
+PASSED tests/test_validators.py::test_validation_error[validator_instance3]
+PASSED tests/test_validators.py::test_no_reload_on_single_env
+PASSED tests/test_validators.py::test_equality[this_validator0-another_validator0]
+PASSED tests/test_validators.py::test_equality[this_validator1-another_validator1]
+PASSED tests/test_validators.py::test_equality[this_validator2-another_validator2]
+PASSED tests/test_validators.py::test_inequality[this_validator0-another_validator0]
+PASSED tests/test_validators.py::test_inequality[this_validator1-another_validator1]
+PASSED tests/test_validators.py::test_inequality[this_validator2-another_validator2]
+PASSED tests/test_validators.py::test_inequality[this_validator3-another_validator3]
+PASSED tests/test_validators.py::test_inequality[this_validator4-another_validator4]
+PASSED tests/test_validators.py::test_ignoring_duplicate_validators
+PASSED tests/test_validators.py::test_validator_equality_by_identity
+PASSED tests/test_validators.py::test_validator_custom_message
+PASSED tests/test_validators.py::test_validate_all
+PASSED tests/test_validators.py::test_validator_subclass_messages
+PASSED tests/test_validators.py::test_positive_combined_validators
+PASSED tests/test_validators.py::test_negative_combined_or_validators
+PASSED tests/test_validators.py::test_negative_combined_and_validators
+PASSED tests/test_validators.py::test_envless_and_combined_validators
+PASSED tests/test_validators.py::test_cast_on_validate_transforms_value
+PASSED tests/test_validators.py::test_validator_can_provide_default
+PASSED tests/test_validators.py::test_validator_init_exclude
+PASSED tests/test_validators.py::test_validator_init_only
+PASSED tests/test_validators.py::test_validator_init_mixed
+PASSED tests/test_validators.py::test_validator_only_post_register
+PASSED tests/test_validators.py::test_validator_exclude_post_register
+PASSED tests/test_validators.py::test_validator_only_current_env_valid
+PASSED tests/test_validators.py::test_raises_only_current_env_invalid
+PASSED tests/test_validators.py::test_raises_on_invalid_selective_args
+PASSED tests/test_validators.py::test_validator_descriptions
+PASSED tests/test_validators.py::test_validator_descriptions_flat
+PASSED tests/test_validators.py::test_toml_should_not_change_validator_type_with_is_type_set
+PASSED tests/test_validators.py::test_toml_should_not_change_validator_type_with_is_type_not_set_int
+PASSED tests/test_validators.py::test_toml_should_not_change_validator_type_using_at_sign
+PASSED tests/test_validators.py::test_default_eq_env_lvl_1
+PASSED tests/test_validators.py::test_default_lvl_1
+PASSED tests/test_validators.py::test_default_lvl_2
+PASSED tests/test_validators.py::test_use_default_value_when_yaml_is_empty_and_explicitly_marked
+PASSED tests/test_validators.py::test_ensure_cast_happens_after_must_exist
+PASSED tests/test_validators.py::test_ensure_cast_works_for_non_default_values
+PASSED tests/test_validators.py::test_is_type_of__raises__with_type_error
+PASSED tests/test_validators_conditions.py::test_conditions[data0]
+PASSED tests/test_validators_conditions.py::test_conditions[data1]
+PASSED tests/test_validators_conditions.py::test_conditions[data2]
+PASSED tests/test_validators_conditions.py::test_conditions[data3]
+PASSED tests/test_validators_conditions.py::test_conditions[data4]
+PASSED tests/test_validators_conditions.py::test_conditions[data5]
+PASSED tests/test_validators_conditions.py::test_conditions[data6]
+PASSED tests/test_validators_conditions.py::test_conditions[data7]
+PASSED tests/test_validators_conditions.py::test_conditions[data8]
+PASSED tests/test_validators_conditions.py::test_conditions[data9]
+PASSED tests/test_validators_conditions.py::test_conditions[data10]
+PASSED tests/test_validators_conditions.py::test_conditions[data11]
+PASSED tests/test_validators_conditions.py::test_conditions[data12]
+PASSED tests/test_validators_conditions.py::test_conditions[data13]
+PASSED tests/test_validators_conditions.py::test_conditions[data14]
+PASSED tests/test_validators_conditions.py::test_conditions[data15]
+PASSED tests/test_validators_conditions.py::test_conditions[data16]
+PASSED tests/test_validators_conditions.py::test_conditions[data17]
+PASSED tests/test_validators_conditions.py::test_conditions[data18]
+PASSED tests/test_validators_conditions.py::test_conditions[data19]
+PASSED tests/test_validators_conditions.py::test_conditions[data20]
+PASSED tests/test_validators_conditions.py::test_negative_conditions[data0]
+PASSED tests/test_validators_conditions.py::test_negative_conditions[data1]
+PASSED tests/test_validators_conditions.py::test_negative_conditions[data2]
+PASSED tests/test_validators_conditions.py::test_negative_conditions[data3]
+PASSED tests/test_validators_conditions.py::test_negative_conditions[data4]
+PASSED tests/test_validators_conditions.py::test_negative_conditions[data5]
+PASSED tests/test_validators_conditions.py::test_negative_conditions[data6]
+PASSED tests/test_validators_conditions.py::test_negative_conditions[data7]
+PASSED tests/test_validators_conditions.py::test_negative_conditions[data8]
+PASSED tests/test_validators_conditions.py::test_negative_conditions[data9]
+PASSED tests/test_validators_conditions.py::test_negative_conditions[data10]
+PASSED tests/test_validators_conditions.py::test_negative_conditions[data11]
+PASSED tests/test_validators_conditions.py::test_negative_conditions[data12]
+PASSED tests/test_validators_conditions.py::test_negative_conditions[data13]
+PASSED tests/test_validators_conditions.py::test_negative_conditions[data14]
+PASSED tests/test_validators_conditions.py::test_negative_conditions[data15]
+PASSED tests/test_validators_conditions.py::test_negative_conditions[data16]
+PASSED tests/test_validators_conditions.py::test_negative_conditions[data17]
+PASSED tests/test_validators_conditions.py::test_negative_conditions[data18]
+PASSED tests/test_validators_conditions.py::test_negative_conditions[data19]
+PASSED tests/test_validators_conditions.py::test_negative_conditions[data20]
+PASSED tests/test_vault.py::test_load_vault_not_configured
+PASSED tests/test_vault.py::test_write_vault_not_configured
+PASSED tests/test_yaml_loader.py::test_load_from_yaml
+PASSED tests/test_yaml_loader.py::test_load_from_multiple_yaml
+PASSED tests/test_yaml_loader.py::test_load_from_multidoc_yaml
+PASSED tests/test_yaml_loader.py::test_no_filename_is_none
+PASSED tests/test_yaml_loader.py::test_key_error_on_invalid_env
+PASSED tests/test_yaml_loader.py::test_no_key_error_on_invalid_env
+PASSED tests/test_yaml_loader.py::test_load_single_key
+PASSED tests/test_yaml_loader.py::test_extra_yaml
+PASSED tests/test_yaml_loader.py::test_empty_value
+PASSED tests/test_yaml_loader.py::test_multiple_filenames
+PASSED tests/test_yaml_loader.py::test_cleaner
+PASSED tests/test_yaml_loader.py::test_using_env
+PASSED tests/test_yaml_loader.py::test_load_dunder
+PASSED tests/test_yaml_loader.py::test_local_files
+PASSED tests/test_yaml_loader.py::test_explicit_local_files
+PASSED tests/test_yaml_loader.py::test_envless
+PASSED tests/test_yaml_loader.py::test_prefix
+PASSED tests/test_yaml_loader.py::test_empty_env
+PASSED tests/test_yaml_loader.py::test_empty_env_from_file
+PASSED tests/test_yaml_loader.py::test_merge_unique_in_a_first_level
+PASSED tests/test_yaml_loader.py::test_should_not_merge_if_merge_is_not_explicit_set
+PASSED tests/test_yaml_loader.py::test_should_not_duplicate_with_global_merge
+PASSED tests/test_yaml_loader.py::test_should_duplicate_when_explicit_set
+PASSED tests/test_yaml_loader.py::test_should_NOT_duplicate_when_explicit_set
+PASSED tests/test_yaml_loader.py::test_empty_yaml_key_overriding
+SKIPPED [1] tests/test_typed.py:146: not supported on 3.9
+SKIPPED [1] tests/test_typed.py:979: not supported on 3.9
+XFAIL tests/test_typed.py::test_list_enclosed_type_with_multi_args
+ERROR tests/test_redis.py::test_write_redis_without_data - Exception: Command...
+ERROR tests/test_redis.py::test_write_to_redis - Exception: Command docker co...
+ERROR tests/test_redis.py::test_load_from_redis_with_key - Exception: Command...
+ERROR tests/test_redis.py::test_write_and_load_from_redis_without_key - Excep...
+ERROR tests/test_redis.py::test_delete_from_redis - Exception: Command docker...
+ERROR tests/test_redis.py::test_delete_all_from_redis - Exception: Command do...
+ERROR tests/test_redis.py::test_redis_has_proper_source_metadata - Exception:...
+ERROR tests/test_vault.py::test_write_vault_without_data - Exception: Command...
+ERROR tests/test_vault.py::test_list_envs_in_vault - Exception: Command docke...
+ERROR tests/test_vault.py::test_write_to_vault - Exception: Command docker co...
+ERROR tests/test_vault.py::test_load_from_vault_with_key - Exception: Command...
+ERROR tests/test_vault.py::test_write_and_load_from_vault_without_key - Excep...
+ERROR tests/test_vault.py::test_read_from_vault_kv2_with_different_environments
+ERROR tests/test_vault.py::test_vault_has_proper_source_metadata - Exception:...
+557 passed, 2 skipped, 1 xfailed, 73 warnings, 14 errors in 15.39s
+Updated 1 path from 40cb979
+   Updating https://github.com/radinshayanfar/SWE-bench.git (ec4a42631acca692e56b168268d54296aa52ed24)
+    Updated https://github.com/radinshayanfar/SWE-bench.git (ec4a42631acca692e56b168268d54296aa52ed24)
+   Building swebench @ git+https://github.com/radinshayanfar/SWE-bench.git@ec4a42631acca692e56b168268d54296aa52ed24
+Downloading numpy (15.9MiB)
+Downloading virtualenv (5.1MiB)
+      Built swebench @ git+https://github.com/radinshayanfar/SWE-bench.git@ec4a42631acca692e56b168268d54296aa52ed24
+Downloading pyarrow (47.8MiB)
+Downloading pandas (10.5MiB)
+Downloading hf-xet (4.3MiB)
+Downloading aiohttp (1.7MiB)
+Downloading chardet (1.4MiB)
+Downloading pygments (1.2MiB)
+ Downloading aiohttp
+ Downloading chardet
+ Downloading pygments
+ Downloading virtualenv
+ Downloading hf-xet
+ Downloading pandas
+ Downloading numpy
+ Downloading pyarrow
+Installed 73 packages in 74ms
+FeatBench results starts here
+PASSED
+FeatBench results ends here
