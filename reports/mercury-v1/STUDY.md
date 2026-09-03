@@ -7,6 +7,8 @@
 **Trials:** 40 canonical trials: 10 tasks × 4 harnesses × 1 run  
 **Human intervention:** none
 
+**Reader-friendly study page:** [Mercury Harness Study as a visual blog](index.html)
+
 ## Abstract
 
 This study measures how four coding harnesses extract useful work from the same

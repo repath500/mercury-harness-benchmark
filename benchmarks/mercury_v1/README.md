@@ -1,6 +1,7 @@
 # Mercury Harness Benchmark V1
 
-Full study: [`reports/mercury-v1/STUDY.md`](../../reports/mercury-v1/STUDY.md)  
+Reader-friendly visual study: [`reports/mercury-v1/index.html`](../../reports/mercury-v1/index.html)  
+Full technical study: [`reports/mercury-v1/STUDY.md`](../../reports/mercury-v1/STUDY.md)  
 Compact machine-readable report: [`reports/mercury-v1/mercury-v1.json`](../../reports/mercury-v1/mercury-v1.json)
 
 This benchmark compares CritiqueCode, Claude Code, Oh My Pi, and OpenCode on

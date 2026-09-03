@@ -19,6 +19,7 @@ was available, so this is not an independent four-ledger billing comparison.
 
 ## Read the study
 
+- [Open the visual study blog](index.html) — the narrative read with embedded Lieflat charts
 - [Full study report](reports/mercury-v1/STUDY.md)
 - [Compact JSON report](reports/mercury-v1/mercury-v1.json)
 - [Compact Markdown report](reports/mercury-v1/mercury-v1.md)
