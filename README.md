@@ -38,7 +38,9 @@ generation records; zero is preserved as reported, not interpreted as free.
 - [Chart data](benchmarks/mercury_v2/charts/data)
 - [Canonical trial bundles](benchmarks/mercury_v2/results/mercury-v2/canonical)
 
-The live study page is hosted at
+The live V2 study page with the interactive visual treatment is hosted at
+<https://www.critique.sh/blog/mercury-harness-study-v2>. The repository also
+retains the original static V1 page at
 <https://repath500.github.io/mercury-harness-benchmark/>.
 
 ## V1 — Mercury 2.5, four harnesses, 40 trials
