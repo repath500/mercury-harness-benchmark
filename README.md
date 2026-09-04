@@ -1,6 +1,49 @@
-# Mercury 2.5 Harness Benchmark V1
+# Mercury Harness Benchmark
 
-This is the public, reproducible artifact for a 40-trial coding-harness study
+## V2 — GLM-5.3-Flash, seven harnesses, 140 trials
+
+This is the public, reproducible artifact for the second study: 20 frozen
+FeatBench tasks (10 easy, 5 hard, 5 very hard), seven coding harnesses, and one
+fresh E2B sandbox per trial. Every harness used `z-ai/glm-5.3-flash` through
+OpenRouter, for 140 trials total.
+
+**Result:** 124/140 externally verified resolutions. Oh My Pi and the official
+DeepSeek Harness resolved all 20 tasks; vanilla Pi and Claude Code resolved
+19/20; OpenCode 18/20; Codex 15/20; CritiqueCode 13/20.
+
+| Harness | Resolved | Displayed cost* | Cost / resolved* | Median agent time | False completions |
+|---|---:|---:|---:|---:|---:|
+| DeepSeek Harness | **20/20** | $1.033177 | $0.051659 | 8:41 | 0 |
+| Oh My Pi | **20/20** | $1.237036 | $0.061852 | 8:40 | 0 |
+| Claude Code | 19/20 | $1.236632 | $0.065086 | 6:38 | 1 |
+| Vanilla Pi | 19/20 | **$0.662295** | **$0.034858** | 7:59 | 0 |
+| OpenCode | 18/20 | $1.638882 | $0.091049 | **5:25** | 2 |
+| Codex | 15/20 | $0.000000† | $0.000000† | 5:18 | 5 |
+| CritiqueCode | 13/20 | $0.065850 | $0.005065 | 2:24 | 7 |
+
+\* 99 of 140 trial costs are reconciled to OpenRouter generation records; the
+remaining rows use the published model price and recorded token counts. One
+shared OpenRouter credential was used, not independent per-harness ledgers.
+† Codex returned native token usage but no provider `total_cost` in the captured
+generation records; zero is preserved as reported, not interpreted as free.
+
+### Read the V2 study
+
+- [Full V2 study report](reports/mercury-v2/STUDY.md)
+- [Machine-readable V2 report](reports/mercury-v2/mercury-v2.json)
+- [Compact V2 Markdown report](reports/mercury-v2/mercury-v2.md)
+- [Frozen 20-task selection](benchmarks/mercury_v2/tasks/mercury-v2.txt)
+- [Selection rationale and oracle gate](benchmarks/mercury_v2/selection.json)
+- [V2 protocol](benchmarks/mercury_v2/benchmark.yaml)
+- [Chart data](benchmarks/mercury_v2/charts/data)
+- [Canonical trial bundles](benchmarks/mercury_v2/results/mercury-v2/canonical)
+
+The live study page is hosted at
+<https://repath500.github.io/mercury-harness-benchmark/>.
+
+## V1 — Mercury 2.5, four harnesses, 40 trials
+
+This is also the public, reproducible artifact for a 40-trial coding-harness study
 using `inception/mercury-2.5-preview` through OpenRouter.
 
 **Result:** 28/40 task resolutions across ten frozen FeatBench tasks, four
@@ -19,12 +62,12 @@ was available, so this is not an independent four-ledger billing comparison.
 
 ## Read the study
 
-- [Read the live visual study blog](https://repath500.github.io/mercury-harness-benchmark/) — the narrative read with embedded Lieflat charts
+- [Read the V1 visual study](https://repath500.github.io/mercury-harness-benchmark/) — the original narrative read
 - [View the source HTML](index.html)
 - [Full study report](reports/mercury-v1/STUDY.md)
 - [Compact JSON report](reports/mercury-v1/mercury-v1.json)
 - [Compact Markdown report](reports/mercury-v1/mercury-v1.md)
-- [Lieflat Charts visual companion](https://github.com/repath500/lieflat-charts/tree/main/templates/reports/mercury-harness-v1)
+- [Lieflat Charts upstream visual reference](https://github.com/larashero3-dotcom/lieflat-charts)
 
 ## What is included
 

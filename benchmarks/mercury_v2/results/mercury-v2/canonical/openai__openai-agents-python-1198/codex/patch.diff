@@ -1,0 +1,129 @@
+diff --git a/src/agents/realtime/session.py b/src/agents/realtime/session.py
+index 82ff924b..edbd1be5 100644
+--- a/src/agents/realtime/session.py
++++ b/src/agents/realtime/session.py
+@@ -93,6 +93,9 @@ class RealtimeSession(RealtimeModelListener):
+         self._history: list[RealtimeItem] = []
+         self._model_config = model_config or {}
+         self._run_config = run_config or {}
++        self._base_model_settings = self._model_config.get("initial_model_settings", {})
++        if not self._base_model_settings:
++            self._base_model_settings = self._run_config.get("model_settings", {})
+         self._event_queue: asyncio.Queue[RealtimeSessionEvent] = asyncio.Queue()
+         self._closed = False
+         self._stored_exception: Exception | None = None
+@@ -511,7 +514,7 @@ class RealtimeSession(RealtimeModelListener):
+         self,
+         agent: RealtimeAgent,
+     ) -> RealtimeSessionModelSettings:
+-        updated_settings: RealtimeSessionModelSettings = {}
++        updated_settings: RealtimeSessionModelSettings = self._base_model_settings.copy()
+         instructions, tools, handoffs = await asyncio.gather(
+             agent.get_system_prompt(self._context_wrapper),
+             agent.get_all_tools(self._context_wrapper),
+@@ -521,10 +524,6 @@ class RealtimeSession(RealtimeModelListener):
+         updated_settings["tools"] = tools or []
+         updated_settings["handoffs"] = handoffs or []
+ 
+-        # Override with initial settings
+-        initial_settings = self._model_config.get("initial_model_settings", {})
+-        updated_settings.update(initial_settings)
+-
+         disable_tracing = self._run_config.get("tracing_disabled", False)
+         if disable_tracing:
+             updated_settings["tracing"] = None
+diff --git a/tests/realtime/test_session.py b/tests/realtime/test_session.py
+index 3bb9b593..9c6c715c 100644
+--- a/tests/realtime/test_session.py
++++ b/tests/realtime/test_session.py
+@@ -6,7 +6,7 @@ import pytest
+ from agents.guardrail import GuardrailFunctionOutput, OutputGuardrail
+ from agents.handoffs import Handoff
+ from agents.realtime.agent import RealtimeAgent
+-from agents.realtime.config import RealtimeRunConfig
++from agents.realtime.config import RealtimeRunConfig, RealtimeSessionModelSettings
+ from agents.realtime.events import (
+     RealtimeAgentEndEvent,
+     RealtimeAgentStartEvent,
+@@ -1242,8 +1242,8 @@ class TestModelSettingsIntegration:
+         await session.__aexit__(None, None, None)
+ 
+     @pytest.mark.asyncio
+-    async def test_model_config_overrides_agent_settings(self):
+-        """Test that initial_model_settings from model_config override agent settings."""
++    async def test_agent_settings_override_model_config_initial_settings(self):
++        """Test that agent settings update initial_model_settings from model_config."""
+         mock_model = Mock(spec=RealtimeModel)
+         mock_model.connect = AsyncMock()
+         mock_model.add_listener = Mock()
+@@ -1253,7 +1253,7 @@ class TestModelSettingsIntegration:
+         agent.get_all_tools = AsyncMock(return_value=[{"type": "function", "name": "agent_tool"}])
+         agent.handoffs = []
+ 
+-        # Provide model config with overrides
++        # Provide model config with initial settings
+         model_config: RealtimeModelConfig = {
+             "initial_model_settings": {
+                 "instructions": "Override instructions",
+@@ -1266,19 +1266,57 @@ class TestModelSettingsIntegration:
+ 
+         await session.__aenter__()
+ 
+-        # Verify overrides were applied
++        # Verify initial settings are used as the base and agent settings are applied
+         connect_config = mock_model.connect.call_args[0][0]
+         initial_settings = connect_config["initial_model_settings"]
+ 
+-        # Should have override values
+-        assert initial_settings["instructions"] == "Override instructions"
++        # Agent-provided values should override the initial settings
++        assert initial_settings["instructions"] == "Agent instructions"
+         assert initial_settings["voice"] == "nova"
+         assert initial_settings["model_name"] == "gpt-4o-realtime"
+-        # Should still have agent tools since not overridden
++        # Agent tools should override the initial settings
+         assert initial_settings["tools"] == [{"type": "function", "name": "agent_tool"}]
+ 
+         await session.__aexit__(None, None, None)
+ 
++    @pytest.mark.asyncio
++    async def test_run_config_settings_are_used_when_no_initial_settings(self):
++        """Test that run config settings are used when initial settings are absent."""
++        mock_model = Mock(spec=RealtimeModel)
++        mock_model.connect = AsyncMock()
++        mock_model.add_listener = Mock()
++
++        agent = Mock(spec=RealtimeAgent)
++        agent.get_system_prompt = AsyncMock(return_value="Agent instructions")
++        agent.get_all_tools = AsyncMock(return_value=[])
++        agent.handoffs = []
++
++        model_config: RealtimeModelConfig = {"api_key": "test-key"}
++        run_config: RealtimeRunConfig = {
++            "model_settings": RealtimeSessionModelSettings(
++                model_name="gpt-4o-realtime",
++                voice="nova",
++            )
++        }
++
++        session = RealtimeSession(
++            mock_model,
++            agent,
++            None,
++            model_config=model_config,
++            run_config=run_config,
++        )
++
++        await session.__aenter__()
++
++        connect_config = mock_model.connect.call_args[0][0]
++        initial_settings = connect_config["initial_model_settings"]
++        assert initial_settings["instructions"] == "Agent instructions"
++        assert initial_settings["model_name"] == "gpt-4o-realtime"
++        assert initial_settings["voice"] == "nova"
++
++        await session.__aexit__(None, None, None)
++
+     @pytest.mark.asyncio
+     async def test_handoffs_are_included_in_model_settings(self):
+         """Test that handoffs from agent are properly processed into model settings."""

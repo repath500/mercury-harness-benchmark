@@ -1,0 +1,21 @@
+diff --git a/src/harbor/trial/single_step.py b/src/harbor/trial/single_step.py
+--- a/src/harbor/trial/single_step.py
++++ b/src/harbor/trial/single_step.py
+@@
+-        await self._collect_artifacts(
+-            stop_main_before_sidecars=(mode == VerifierEnvironmentMode.SEPARATE)
+-        )
++        try:
++            await asyncio.wait_for(
++                self._collect_artifacts(
++                    stop_main_before_sidecars=(mode == VerifierEnvironmentMode.SEPARATE)
++                ),
++                timeout=120,
++            )
++        except asyncio.TimeoutError:
++            # Artifact collection is best-effort. A provider-side transfer
++            # stall must not prevent the independent verifier from grading the
++            # patch already present in the agent environment.
++            self.logger.warning(
++                "Artifact collection timed out; continuing to verification"
++            )

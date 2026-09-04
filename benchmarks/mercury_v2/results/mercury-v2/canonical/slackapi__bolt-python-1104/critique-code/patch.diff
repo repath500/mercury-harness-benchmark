@@ -1,0 +1,62 @@
+diff --git a/slack_bolt/middleware/authorization/internals.py b/slack_bolt/middleware/authorization/internals.py
+index 81410195..a7f97da1 100644
+--- a/slack_bolt/middleware/authorization/internals.py
++++ b/slack_bolt/middleware/authorization/internals.py
+@@ -1,4 +1,4 @@
+-from typing import Optional, Union
++from typing import List, Optional, Union
+ 
+ from slack_sdk.web import SlackResponse
+ 
+@@ -62,13 +62,51 @@ def _is_bot_token(token: Optional[str]) -> bool:
+     return token is not None and token.startswith("xoxb-")
+ 
+ 
++def _is_user_token(token: Optional[str]) -> bool:
++    return token is not None and token.startswith("xoxp-")
++
++
++def _parse_oauth_scopes_header(header_value: Optional[Union[str, List[str]]]) -> List[str]:
++    if not header_value:
++        return []
++    if isinstance(header_value, list):
++        header_value = header_value[0] if len(header_value) > 0 else None
++    if not header_value:
++        return []
++    return [scope.strip() for scope in str(header_value).split(",") if scope.strip()]
++
++
++def _build_scopes_for_authorize_result(  # type: ignore
++    auth_test_result: Union[SlackResponse, "AsyncSlackResponse"],
++    token: Optional[str],
++) -> "tuple":
++    headers = getattr(auth_test_result, "headers", None) or {}
++    header_value: Optional[Union[str, List[str]]] = None
++    try:
++        for key, value in headers.items():
++            if str(key).lower() == "x-oauth-scopes":
++                header_value = value
++                break
++    except Exception:
++        header_value = None
++    scopes = _parse_oauth_scopes_header(header_value)
++    if _is_bot_token(token):
++        return scopes, None
++    if _is_user_token(token):
++        return None, scopes
++    return None, None
++
++
+ def _to_authorize_result(  # type: ignore
+     auth_test_result: Union[SlackResponse, "AsyncSlackResponse"],
+     token: Optional[str],
+     request_user_id: Optional[str],
+ ) -> AuthorizeResult:
+     user_id = auth_test_result.get("user_id")
++    bot_scopes, user_scopes = _build_scopes_for_authorize_result(auth_test_result, token)
+     return AuthorizeResult(
++        bot_scopes=bot_scopes,
++        user_scopes=user_scopes,
+         enterprise_id=auth_test_result.get("enterprise_id"),
+         team_id=auth_test_result.get("team_id"),
+         bot_id=auth_test_result.get("bot_id"),

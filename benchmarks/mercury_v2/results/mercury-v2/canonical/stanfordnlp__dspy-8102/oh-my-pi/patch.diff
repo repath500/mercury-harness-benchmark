@@ -1,0 +1,90 @@
+diff --git a/dspy/primitives/tool.py b/dspy/primitives/tool.py
+index 94817397e..949cd7ca7 100644
+--- a/dspy/primitives/tool.py
++++ b/dspy/primitives/tool.py
+@@ -101,11 +101,20 @@ class Tool:
+ 
+         # Use inspect.signature to get all arg names
+         sig = inspect.signature(annotations_func)
++        # Detect whether the function accepts arbitrary keyword arguments (i.e. a **kwargs parameter)
++        self.has_var_kwargs = any(
++            param.kind == inspect.Parameter.VAR_KEYWORD for param in sig.parameters.values()
++        )
+         # Get available type hints
+         available_hints = get_type_hints(annotations_func)
+-        # Build a dictionary of arg name -> type (defaulting to Any when missing)
+-        hints = {param_name: available_hints.get(param_name, Any) for param_name in sig.parameters.keys()}
+-        default_values = {param_name: sig.parameters[param_name].default for param_name in sig.parameters.keys()}
++        # Build a dictionary of arg name -> type (defaulting to Any when missing), excluding the **kwargs
++        # catch-all parameter since it is not a concrete argument.
++        hints = {
++            param_name: available_hints.get(param_name, Any)
++            for param_name, param in sig.parameters.items()
++            if param.kind != inspect.Parameter.VAR_KEYWORD
++        }
++        default_values = {param_name: sig.parameters[param_name].default for param_name in hints.keys()}
+ 
+         # Process each argument's type to generate its JSON schema.
+         for k, v in hints.items():
+@@ -147,7 +156,10 @@ class Tool:
+     def __call__(self, **kwargs):
+         for k, v in kwargs.items():
+             if k not in self.args:
+-                raise ValueError(f"Arg {k} is not in the tool's args.")
++                if not self.has_var_kwargs:
++                    raise ValueError(f"Arg {k} is not in the tool's args.")
++                # The function accepts **kwargs, so unknown arguments are passed through without validation.
++                continue
+             try:
+                 instance = v.model_dump() if hasattr(v, "model_dump") else v
+                 type_str = self.args[k].get("type")
+diff --git a/tests/primitives/test_tool.py b/tests/primitives/test_tool.py
+index ce6b3f441..08405e1d3 100644
+--- a/tests/primitives/test_tool.py
++++ b/tests/primitives/test_tool.py
+@@ -193,3 +193,45 @@ def test_tool_call_parses_nested_list_of_pydantic_model():
+ 
+     result = tool(**args)
+     assert result == [[DummyModel(field1="hello", field2=123)]]
++
++
++def test_tool_callable_with_kwargs():
++    def dummy_function(**kwargs):
++        c = kwargs.get("c", 1)
++        d = kwargs.get("d", 1)
++        return c * d
++
++    tool = Tool(dummy_function)
++    assert tool.has_var_kwargs
++    assert tool.args == {}
++    result = tool(c=5, d=4)
++    assert result == 20
++
++
++def test_tool_callable_with_kwargs_and_named_args():
++    def dummy_function(c=1, d=1, **kwargs):
++        return c * d
++
++    tool = Tool(dummy_function)
++    assert tool.has_var_kwargs
++    assert tool.args == {"c": {"default": 1}, "d": {"default": 1}}
++    assert tool(c=5, d=4) == 20
++    # Arbitrary kwargs are passed through to the function.
++    assert tool(c=5, d=4, e=6) == 20
++
++
++def test_tool_with_kwargs_still_validates_typed_args():
++    def dummy_function(x: int, **kwargs):
++        return x
++
++    tool = Tool(dummy_function)
++    assert tool(x=3, whatever="free-form") == 3
++    with pytest.raises(ValueError):
++        tool(x="not an integer", whatever="free-form")
++
++
++def test_tool_without_kwargs_rejects_unknown_args():
++    tool = Tool(dummy_function)
++    assert not tool.has_var_kwargs
++    with pytest.raises(ValueError):
++        tool(x=42, y="hello", unknown_arg="oops")

@@ -1,0 +1,210 @@
+diff --git a/aiogram/dispatcher/dispatcher.py b/aiogram/dispatcher/dispatcher.py
+index 8b6987cb..0663fccf 100644
+--- a/aiogram/dispatcher/dispatcher.py
++++ b/aiogram/dispatcher/dispatcher.py
+@@ -6,7 +6,7 @@ import signal
+ import warnings
+ from asyncio import CancelledError, Event, Future, Lock
+ from contextlib import suppress
+-from typing import Any, AsyncGenerator, Dict, List, Optional, Set, Union
++from typing import Any, AsyncGenerator, Callable, Coroutine, Dict, List, Optional, Set, Union
+ 
+ from .. import loggers
+ from ..client.bot import Bot
+@@ -326,6 +326,7 @@ class Dispatcher(Router):
+         bot: Bot,
+         polling_timeout: int = 30,
+         handle_as_tasks: bool = True,
++        tasks_concurrency_limit: Optional[int] = None,
+         backoff_config: BackoffConfig = DEFAULT_BACKOFF_CONFIG,
+         allowed_updates: Optional[List[str]] = None,
+         **kwargs: Any,
+@@ -341,6 +342,11 @@ class Dispatcher(Router):
+         loggers.dispatcher.info(
+             "Run polling for bot @%s id=%d - %r", user.username, bot.id, user.full_name
+         )
++        tasks_semaphore = (
++            asyncio.Semaphore(tasks_concurrency_limit)
++            if tasks_concurrency_limit is not None
++            else None
++        )
+         try:
+             async for update in self._listen_updates(
+                 bot,
+@@ -350,9 +356,19 @@ class Dispatcher(Router):
+             ):
+                 handle_update = self._process_update(bot=bot, update=update, **kwargs)
+                 if handle_as_tasks:
+-                    handle_update_task = asyncio.create_task(handle_update)
+-                    self._handle_update_tasks.add(handle_update_task)
+-                    handle_update_task.add_done_callback(self._handle_update_tasks.discard)
++                    if tasks_semaphore is not None:
++                        await tasks_semaphore.acquire()
++                    try:
++                        self._create_handle_update_task(
++                            handle_update,
++                            release_semaphore=tasks_semaphore.release
++                            if tasks_semaphore is not None
++                            else None,
++                        )
++                    except Exception:
++                        if tasks_semaphore is not None:
++                            tasks_semaphore.release()
++                        raise
+                 else:
+                     await handle_update
+         finally:
+@@ -360,6 +376,21 @@ class Dispatcher(Router):
+                 "Polling stopped for bot @%s id=%d - %r", user.username, bot.id, user.full_name
+             )
+ 
++    def _create_handle_update_task(
++        self,
++        handle_update: Coroutine[Any, Any, bool],
++        release_semaphore: Optional[Callable[[], None]] = None,
++    ) -> None:
++        handle_update_task = asyncio.create_task(handle_update)
++        self._handle_update_tasks.add(handle_update_task)
++
++        def release_handle_update_task(task: asyncio.Task[Any]) -> None:
++            self._handle_update_tasks.discard(task)
++            if release_semaphore is not None:
++                release_semaphore()
++
++        handle_update_task.add_done_callback(release_handle_update_task)
++
+     async def _feed_webhook_update(self, bot: Bot, update: Update, **kwargs: Any) -> Any:
+         """
+         The same with `Dispatcher.process_update()` but returns real response instead of bool
+@@ -462,6 +493,7 @@ class Dispatcher(Router):
+         *bots: Bot,
+         polling_timeout: int = 10,
+         handle_as_tasks: bool = True,
++        tasks_concurrency_limit: Optional[int] = None,
+         backoff_config: BackoffConfig = DEFAULT_BACKOFF_CONFIG,
+         allowed_updates: Optional[Union[List[str], UNSET_TYPE]] = UNSET,
+         handle_signals: bool = True,
+@@ -474,6 +506,10 @@ class Dispatcher(Router):
+         :param bots: Bot instances (one or more)
+         :param polling_timeout: Long-polling wait time
+         :param handle_as_tasks: Run task for each event and no wait result
++        :param tasks_concurrency_limit: Maximum number of update processing tasks
++               that can run at the same time when :code:`handle_as_tasks=True`.
++               If not set or :code:`None`, each update is processed in a separate task
++               without an artificial limit.
+         :param backoff_config: backoff-retry config
+         :param allowed_updates: List of the update types you want your bot to receive
+                By default, all used update types are enabled (resolved from handlers)
+@@ -531,6 +567,7 @@ class Dispatcher(Router):
+                         self._polling(
+                             bot=bot,
+                             handle_as_tasks=handle_as_tasks,
++                            tasks_concurrency_limit=tasks_concurrency_limit,
+                             polling_timeout=polling_timeout,
+                             backoff_config=backoff_config,
+                             allowed_updates=allowed_updates,
+@@ -564,6 +601,7 @@ class Dispatcher(Router):
+         *bots: Bot,
+         polling_timeout: int = 10,
+         handle_as_tasks: bool = True,
++        tasks_concurrency_limit: Optional[int] = None,
+         backoff_config: BackoffConfig = DEFAULT_BACKOFF_CONFIG,
+         allowed_updates: Optional[Union[List[str], UNSET_TYPE]] = UNSET,
+         handle_signals: bool = True,
+@@ -576,6 +614,10 @@ class Dispatcher(Router):
+         :param bots: Bot instances (one or more)
+         :param polling_timeout: Long-polling wait time
+         :param handle_as_tasks: Run task for each event and no wait result
++        :param tasks_concurrency_limit: Maximum number of update processing tasks
++               that can run at the same time when :code:`handle_as_tasks=True`.
++               If not set or :code:`None`, each update is processed in a separate task
++               without an artificial limit.
+         :param backoff_config: backoff-retry config
+         :param allowed_updates: List of the update types you want your bot to receive
+         :param handle_signals: handle signals (SIGINT/SIGTERM)
+@@ -590,6 +632,7 @@ class Dispatcher(Router):
+                     **kwargs,
+                     polling_timeout=polling_timeout,
+                     handle_as_tasks=handle_as_tasks,
++                    tasks_concurrency_limit=tasks_concurrency_limit,
+                     backoff_config=backoff_config,
+                     allowed_updates=allowed_updates,
+                     handle_signals=handle_signals,
+diff --git a/tests/test_dispatcher/test_dispatcher.py b/tests/test_dispatcher/test_dispatcher.py
+index 81bb6c2f..07c19d60 100644
+--- a/tests/test_dispatcher/test_dispatcher.py
++++ b/tests/test_dispatcher/test_dispatcher.py
+@@ -793,6 +793,73 @@ class TestDispatcher:
+             else:
+                 mocked_process_update.assert_awaited()
+ 
++    async def test_polling_tasks_concurrency_limit(self, bot: MockedBot):
++        dispatcher = Dispatcher()
++
++        async def _mock_updates(*_):
++            for update_id in range(3):
++                yield Update(update_id=update_id)
++
++        started = [Event(), Event(), Event()]
++        release = Event()
++
++        async def process_update(update: Update, **_: Any) -> bool:
++            started[update.update_id].set()
++            await release.wait()
++            return True
++
++        with (
++            patch(
++                "aiogram.dispatcher.dispatcher.Dispatcher._process_update",
++                side_effect=process_update,
++            ) as mocked_process_update,
++            patch(
++                "aiogram.dispatcher.dispatcher.Dispatcher._listen_updates"
++            ) as patched_listen_updates,
++        ):
++            patched_listen_updates.return_value = _mock_updates()
++            polling_task = asyncio.create_task(
++                dispatcher._polling(
++                    bot=bot, handle_as_tasks=True, tasks_concurrency_limit=1
++                )
++            )
++            await asyncio.wait_for(started[0].wait(), timeout=0.1)
++            assert not started[1].is_set()
++            assert not started[2].is_set()
++            release.set()
++            await asyncio.wait_for(polling_task, timeout=0.1)
++
++        assert mocked_process_update.await_count == 3
++
++    async def test_polling_tasks_semaphore_release_on_error(self, bot: MockedBot):
++        dispatcher = Dispatcher()
++
++        async def _mock_updates(*_):
++            for update_id in range(2):
++                yield Update(update_id=update_id)
++
++        async def process_update(update: Update, **_: Any) -> bool:
++            if update.update_id == 0:
++                raise Exception("Kaboom!")
++            return True
++
++        with (
++            patch(
++                "aiogram.dispatcher.dispatcher.Dispatcher._process_update",
++                side_effect=process_update,
++            ) as mocked_process_update,
++            patch(
++                "aiogram.dispatcher.dispatcher.Dispatcher._listen_updates"
++            ) as patched_listen_updates,
++        ):
++            patched_listen_updates.return_value = _mock_updates()
++            await dispatcher._polling(
++                bot=bot, handle_as_tasks=True, tasks_concurrency_limit=1
++            )
++            await asyncio.gather(*dispatcher._handle_update_tasks)
++
++        assert mocked_process_update.await_count == 2
++
+     async def test_exception_handler_catch_exceptions(self, bot: MockedBot):
+         dp = Dispatcher()
+         router = Router()

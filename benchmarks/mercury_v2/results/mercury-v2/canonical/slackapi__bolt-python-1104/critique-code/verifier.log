@@ -1,0 +1,462 @@
++ cd /testbed
++ pip install -e .
+Looking in indexes: https://pypi.tuna.tsinghua.edu.cn/simple
+Obtaining file:///testbed
+  Installing build dependencies: started
+  Installing build dependencies: finished with status 'done'
+  Checking if build backend supports build_editable: started
+  Checking if build backend supports build_editable: finished with status 'done'
+  Getting requirements to build editable: started
+  Getting requirements to build editable: finished with status 'done'
+  Preparing editable metadata (pyproject.toml): started
+  Preparing editable metadata (pyproject.toml): finished with status 'done'
+Requirement already satisfied: slack_sdk<4,>=3.25.0 in /usr/local/lib/python3.9/site-packages (from slack_bolt==1.19.0) (3.30.0)
+Building wheels for collected packages: slack_bolt
+  Building editable for slack_bolt (pyproject.toml): started
+  Building editable for slack_bolt (pyproject.toml): finished with status 'done'
+  Created wheel for slack_bolt: filename=slack_bolt-1.19.0-0.editable-py2.py3-none-any.whl size=7369 sha256=56449457817989cbae403435d545b8d817ed2815de334defa11aa8c767dd765b
+  Stored in directory: /tmp/pip-ephem-wheel-cache-dmyuh1vt/wheels/7d/66/67/70d1ee2124ccf21d601c352e25cdca10f611f7c8b3f9ffb9e4
+Successfully built slack_bolt
+Installing collected packages: slack_bolt
+  Attempting uninstall: slack_bolt
+    Found existing installation: slack_bolt 1.19.0
+    Uninstalling slack_bolt-1.19.0:
+      Successfully uninstalled slack_bolt-1.19.0
+Successfully installed slack_bolt-1.19.0
+WARNING: Running pip as the 'root' user can result in broken permissions and conflicting behaviour with the system package manager. It is recommended to use a virtual environment instead: https://pip.pypa.io/warnings/venv
+
+[notice] A new release of pip is available: 23.0.1 -> 26.0.1
+[notice] To update, run: pip install --upgrade pip
++ git checkout ce2778076c0b0f7a961a7ad8cdeb80bdf7d5130b tests/mock_web_api_server.py tests/slack_bolt/middleware/authorization/test_single_team_authorization.py tests/slack_bolt_async/middleware/authorization/test_single_team_authorization.py
+Updated 0 paths from abff8d18
++ for path in tests/mock_web_api_server.py tests/slack_bolt/middleware/authorization/test_single_team_authorization.py tests/slack_bolt_async/middleware/authorization/test_single_team_authorization.py
++ '[' -e tests/mock_web_api_server.py ']'
++ git ls-files --error-unmatch -- tests/mock_web_api_server.py
++ for path in tests/mock_web_api_server.py tests/slack_bolt/middleware/authorization/test_single_team_authorization.py tests/slack_bolt_async/middleware/authorization/test_single_team_authorization.py
++ '[' -e tests/slack_bolt/middleware/authorization/test_single_team_authorization.py ']'
++ git ls-files --error-unmatch -- tests/slack_bolt/middleware/authorization/test_single_team_authorization.py
++ for path in tests/mock_web_api_server.py tests/slack_bolt/middleware/authorization/test_single_team_authorization.py tests/slack_bolt_async/middleware/authorization/test_single_team_authorization.py
++ '[' -e tests/slack_bolt_async/middleware/authorization/test_single_team_authorization.py ']'
++ git ls-files --error-unmatch -- tests/slack_bolt_async/middleware/authorization/test_single_team_authorization.py
++ echo 'diff --git a/tests/mock_web_api_server.py b/tests/mock_web_api_server.py
+index 1111111..2222222 100644
+--- a/tests/mock_web_api_server.py
++++ b/tests/mock_web_api_server.py
+@@ -149,13 +149,15 @@ def _handle(self):
+             if self.is_valid_user_token():
+                 if path == "/auth.test":
+                     self.send_response(200)
++                    self.send_header("x-oauth-scopes", "chat:write,search:read")
+                     self.set_common_headers(len(USER_AUTH_TEST_RESPONSE))
+                     self.wfile.write(USER_AUTH_TEST_RESPONSE.encode("utf-8"))
+                     return
+
+             if self.is_valid_token():
+                 if path == "/auth.test":
+                     self.send_response(200)
++                    self.send_header("x-oauth-scopes", "chat:write,commands")
+                     self.set_common_headers(len(BOT_AUTH_TEST_RESPONSE))
+                     self.wfile.write(BOT_AUTH_TEST_RESPONSE.encode("utf-8"))
+                     return
+diff --git a/tests/slack_bolt/middleware/authorization/test_single_team_authorization.py b/tests/slack_bolt/middleware/authorization/test_single_team_authorization.py
+index 1111111..2222222 100644
+--- a/tests/slack_bolt/middleware/authorization/test_single_team_authorization.py
++++ b/tests/slack_bolt/middleware/authorization/test_single_team_authorization.py
+@@ -1,4 +1,5 @@
+ from slack_sdk import WebClient
++from slack_sdk.web import SlackResponse
+
+ from slack_bolt.middleware import SingleTeamAuthorization
+ from slack_bolt.middleware.authorization.internals import _build_user_facing_authorize_error_message
+@@ -34,6 +35,29 @@ def test_success_pattern(self):
+         assert resp.status == 200
+         assert resp.body == ""
+
++    def test_success_pattern_with_bot_scopes(self):
++        client = WebClient(base_url=self.mock_api_server_base_url, token="xoxb-valid")
++        auth_test_result: SlackResponse = SlackResponse(
++            client=client,
++            http_verb="POST",
++            api_url="https://slack.com/api/auth.test",
++            req_args={},
++            data={},
++            headers={"x-oauth-scopes": "chat:write,commands"},
++            status_code=200,
++        )
++        authorization = SingleTeamAuthorization(auth_test_result=auth_test_result)
++        req = BoltRequest(body="payload={}", headers={})
++        req.context["client"] = client
++        resp = BoltResponse(status=404)
++
++        resp = authorization.process(req=req, resp=resp, next=next)
++
++        assert resp.status == 200
++        assert resp.body == ""
++        assert req.context.authorize_result.bot_scopes == ["chat:write", "commands"]
++        assert req.context.authorize_result.user_scopes is None
++
+     def test_failure_pattern(self):
+         authorization = SingleTeamAuthorization(auth_test_result={})
+         req = BoltRequest(body="payload={}", headers={})
+diff --git a/tests/slack_bolt_async/middleware/authorization/test_single_team_authorization.py b/tests/slack_bolt_async/middleware/authorization/test_single_team_authorization.py
+index 1111111..2222222 100644
+--- a/tests/slack_bolt_async/middleware/authorization/test_single_team_authorization.py
++++ b/tests/slack_bolt_async/middleware/authorization/test_single_team_authorization.py
+@@ -1,6 +1,7 @@
+ import asyncio
+
+ import pytest
++from slack.web.async_slack_response import AsyncSlackResponse
+ from slack_sdk.web.async_client import AsyncWebClient
+
+ from slack_bolt.middleware.authorization.async_single_team_authorization import (
+@@ -47,6 +48,21 @@ async def test_success_pattern(self):
+         assert resp.status == 200
+         assert resp.body == ""
+
++    @pytest.mark.asyncio
++    async def test_success_pattern_with_bot_scopes(self):
++        client = AsyncWebClient(base_url=self.mock_api_server_base_url, token="xoxb-valid")
++        authorization = AsyncSingleTeamAuthorization()
++        req = AsyncBoltRequest(body="payload={}", headers={})
++        req.context["client"] = client
++        resp = BoltResponse(status=404)
++
++        resp = await authorization.async_process(req=req, resp=resp, next=next)
++
++        assert resp.status == 200
++        assert resp.body == ""
++        assert req.context.authorize_result.bot_scopes == ["chat:write", "commands"]
++        assert req.context.authorize_result.user_scopes is None
++
+     @pytest.mark.asyncio
+     async def test_failure_pattern(self):
+         authorization = AsyncSingleTeamAuthorization()'
++ git apply --check /tmp/test_patch.diff
++ git apply /tmp/test_patch.diff
+++ mktemp
++ LOG_FILE=/tmp/tmp.fyH6AokB7u
++ export LOG_FILE
++ exec
++ exec
+++ tee /tmp/tmp.fyH6AokB7u
++ set +x
+........................................................................ [ 38%]
+........................................................................ [ 77%]
+..........................................                               [100%]
+=============================== warnings summary ===============================
+../usr/local/lib/python3.9/site-packages/slack/deprecation.py:14
+  /usr/local/lib/python3.9/site-packages/slack/deprecation.py:14: UserWarning: slack package is deprecated. Please use slack_sdk.web/webhook/rtm package instead. For more info, go to https://slack.dev/python-slack-sdk/v3-migration/
+    warnings.warn(message)
+
+../usr/local/lib/python3.9/site-packages/slack/deprecation.py:14
+  /usr/local/lib/python3.9/site-packages/slack/deprecation.py:14: UserWarning: slack.web package is deprecated. Please use slack_sdk.web package instead. For more info, go to https://slack.dev/python-slack-sdk/v3-migration/
+    warnings.warn(message)
+
+../usr/local/lib/python3.9/site-packages/slack/deprecation.py:14
+  /usr/local/lib/python3.9/site-packages/slack/deprecation.py:14: UserWarning: slack.errors package is deprecated. Please use slack_sdk.errors package instead. For more info, go to https://slack.dev/python-slack-sdk/v3-migration/
+    warnings.warn(message)
+
+../usr/local/lib/python3.9/site-packages/slack/deprecation.py:14
+  /usr/local/lib/python3.9/site-packages/slack/deprecation.py:14: UserWarning: slack.web.classes package is deprecated. Please use slack_sdk.models package instead. For more info, go to https://slack.dev/python-slack-sdk/v3-migration/
+    warnings.warn(message)
+
+../usr/local/lib/python3.9/site-packages/slack/deprecation.py:14
+  /usr/local/lib/python3.9/site-packages/slack/deprecation.py:14: UserWarning: slack.web.classes.attachments package is deprecated. Please use slack_sdk.models.attachments package instead. For more info, go to https://slack.dev/python-slack-sdk/v3-migration/
+    warnings.warn(message)
+
+../usr/local/lib/python3.9/site-packages/slack/deprecation.py:14
+  /usr/local/lib/python3.9/site-packages/slack/deprecation.py:14: UserWarning: slack.web.classes.blocks package is deprecated. Please use slack_sdk.models.blocks package instead. For more info, go to https://slack.dev/python-slack-sdk/v3-migration/
+    warnings.warn(message)
+
+tests/slack_bolt_async/middleware/authorization/test_single_team_authorization.py::TestSingleTeamAuthorization::test_success_pattern
+tests/slack_bolt_async/middleware/authorization/test_single_team_authorization.py::TestSingleTeamAuthorization::test_success_pattern_with_bot_scopes
+tests/slack_bolt_async/middleware/authorization/test_single_team_authorization.py::TestSingleTeamAuthorization::test_failure_pattern
+tests/slack_bolt_async/middleware/authorization/test_single_team_authorization.py::TestSingleTeamAuthorization::test_failure_pattern_custom_message
+  /usr/local/lib/python3.9/site-packages/pytest_asyncio/plugin.py:757: DeprecationWarning: The event_loop fixture provided by pytest-asyncio has been redefined in
+  /testbed/tests/slack_bolt_async/middleware/authorization/test_single_team_authorization.py:27
+  Replacing the event_loop fixture with a custom implementation is deprecated
+  and will lead to errors in the future.
+  If you want to request an asyncio event loop with a scope other than function
+  scope, use the "scope" argument to the asyncio mark when marking the tests.
+  If you want to return different types of event loops, use the event_loop_policy
+  fixture.
+  
+    warnings.warn(
+
+tests/scenario_tests_async/test_app.py::TestAsyncApp::test_proxy_ssl_for_respond
+tests/scenario_tests_async/test_app.py::TestAsyncApp::test_argument_logger_propagation
+  /usr/local/lib/python3.9/site-packages/pytest_asyncio/plugin.py:757: DeprecationWarning: The event_loop fixture provided by pytest-asyncio has been redefined in
+  /testbed/tests/scenario_tests_async/test_app.py:30
+  Replacing the event_loop fixture with a custom implementation is deprecated
+  and will lead to errors in the future.
+  If you want to request an asyncio event loop with a scope other than function
+  scope, use the "scope" argument to the asyncio mark when marking the tests.
+  If you want to return different types of event loops, use the event_loop_policy
+  fixture.
+  
+    warnings.warn(
+
+tests/scenario_tests_async/test_block_actions.py: 11 warnings
+  /usr/local/lib/python3.9/site-packages/pytest_asyncio/plugin.py:757: DeprecationWarning: The event_loop fixture provided by pytest-asyncio has been redefined in
+  /testbed/tests/scenario_tests_async/test_block_actions.py:31
+  Replacing the event_loop fixture with a custom implementation is deprecated
+  and will lead to errors in the future.
+  If you want to request an asyncio event loop with a scope other than function
+  scope, use the "scope" argument to the asyncio mark when marking the tests.
+  If you want to return different types of event loops, use the event_loop_policy
+  fixture.
+  
+    warnings.warn(
+
+tests/scenario_tests_async/test_block_actions_respond.py::TestAsyncBlockActionsRespond::test_success
+  /usr/local/lib/python3.9/site-packages/pytest_asyncio/plugin.py:757: DeprecationWarning: The event_loop fixture provided by pytest-asyncio has been redefined in
+  /testbed/tests/scenario_tests_async/test_block_actions_respond.py:25
+  Replacing the event_loop fixture with a custom implementation is deprecated
+  and will lead to errors in the future.
+  If you want to request an asyncio event loop with a scope other than function
+  scope, use the "scope" argument to the asyncio mark when marking the tests.
+  If you want to return different types of event loops, use the event_loop_policy
+  fixture.
+  
+    warnings.warn(
+
+tests/slack_bolt_async/middleware/request_verification/test_request_verification.py::TestAsyncRequestVerification::test_valid
+tests/slack_bolt_async/middleware/request_verification/test_request_verification.py::TestAsyncRequestVerification::test_invalid
+  /usr/local/lib/python3.9/site-packages/pytest_asyncio/plugin.py:757: DeprecationWarning: The event_loop fixture provided by pytest-asyncio has been redefined in
+  /testbed/tests/slack_bolt_async/middleware/request_verification/test_request_verification.py:36
+  Replacing the event_loop fixture with a custom implementation is deprecated
+  and will lead to errors in the future.
+  If you want to request an asyncio event loop with a scope other than function
+  scope, use the "scope" argument to the asyncio mark when marking the tests.
+  If you want to return different types of event loops, use the event_loop_policy
+  fixture.
+  
+    warnings.warn(
+
+tests/slack_bolt_async/oauth/test_async_oauth_flow.py: 12 warnings
+  /usr/local/lib/python3.9/site-packages/pytest_asyncio/plugin.py:757: DeprecationWarning: The event_loop fixture provided by pytest-asyncio has been redefined in
+  /testbed/tests/slack_bolt_async/oauth/test_async_oauth_flow.py:36
+  Replacing the event_loop fixture with a custom implementation is deprecated
+  and will lead to errors in the future.
+  If you want to request an asyncio event loop with a scope other than function
+  scope, use the "scope" argument to the asyncio mark when marking the tests.
+  If you want to return different types of event loops, use the event_loop_policy
+  fixture.
+  
+    warnings.warn(
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+=========================== short test summary info ============================
+PASSED tests/slack_bolt/middleware/authorization/test_single_team_authorization.py::TestSingleTeamAuthorization::test_success_pattern
+PASSED tests/slack_bolt/middleware/authorization/test_single_team_authorization.py::TestSingleTeamAuthorization::test_success_pattern_with_bot_scopes
+PASSED tests/slack_bolt/middleware/authorization/test_single_team_authorization.py::TestSingleTeamAuthorization::test_failure_pattern
+PASSED tests/slack_bolt/middleware/authorization/test_single_team_authorization.py::TestSingleTeamAuthorization::test_failure_pattern_custom_message
+PASSED tests/slack_bolt_async/middleware/authorization/test_single_team_authorization.py::TestSingleTeamAuthorization::test_success_pattern
+PASSED tests/slack_bolt_async/middleware/authorization/test_single_team_authorization.py::TestSingleTeamAuthorization::test_success_pattern_with_bot_scopes
+PASSED tests/slack_bolt_async/middleware/authorization/test_single_team_authorization.py::TestSingleTeamAuthorization::test_failure_pattern
+PASSED tests/slack_bolt_async/middleware/authorization/test_single_team_authorization.py::TestSingleTeamAuthorization::test_failure_pattern_custom_message
+PASSED tests/scenario_tests/test_error_handler.py::TestErrorHandler::test_default
+PASSED tests/scenario_tests/test_error_handler.py::TestErrorHandler::test_custom
+PASSED tests/scenario_tests/test_error_handler.py::TestErrorHandler::test_process_before_response_default
+PASSED tests/scenario_tests/test_error_handler.py::TestErrorHandler::test_process_before_response_custom
+PASSED tests/scenario_tests/test_error_handler.py::TestErrorHandler::test_unhandled_errors
+PASSED tests/scenario_tests/test_error_handler.py::TestErrorHandler::test_unhandled_errors_process_before_response
+PASSED tests/scenario_tests/test_error_handler.py::TestErrorHandler::test_unhandled_errors_no_next
+PASSED tests/scenario_tests/test_error_handler.py::TestErrorHandler::test_unhandled_errors_process_before_response_no_next
+PASSED tests/scenario_tests/test_error_handler.py::TestErrorHandler::test_global_middleware_errors
+PASSED tests/scenario_tests/test_events.py::TestEvents::test_mock_server_is_running
+PASSED tests/scenario_tests/test_events.py::TestEvents::test_middleware
+PASSED tests/scenario_tests/test_events.py::TestEvents::test_middleware_skip
+PASSED tests/scenario_tests/test_events.py::TestEvents::test_reaction_added
+PASSED tests/scenario_tests/test_events.py::TestEvents::test_stable_auto_ack
+PASSED tests/scenario_tests/test_events.py::TestEvents::test_self_member_join_left_events
+PASSED tests/scenario_tests/test_events.py::TestEvents::test_member_join_left_events
+PASSED tests/scenario_tests/test_events.py::TestEvents::test_uninstallation_and_revokes
+PASSED tests/scenario_tests/test_events.py::TestEvents::test_message_subtypes_0
+PASSED tests/scenario_tests/test_events.py::TestEvents::test_message_subtypes_1
+PASSED tests/scenario_tests/test_events.py::TestEvents::test_message_subtypes_2
+PASSED tests/scenario_tests/test_events.py::TestEvents::test_message_subtypes_3
+PASSED tests/scenario_tests/test_events.py::TestEvents::test_invalid_message_events
+PASSED tests/scenario_tests/test_events.py::TestEvents::test_context_generation
+PASSED tests/scenario_tests/test_events.py::TestEvents::test_additional_decorators_1
+PASSED tests/scenario_tests/test_events.py::TestEvents::test_additional_decorators_2
+PASSED tests/scenario_tests/test_events_socket_mode.py::TestEventsSocketMode::test_mock_server_is_running
+PASSED tests/scenario_tests/test_events_socket_mode.py::TestEventsSocketMode::test_body_validation
+PASSED tests/scenario_tests/test_events_socket_mode.py::TestEventsSocketMode::test_middleware
+PASSED tests/scenario_tests/test_events_socket_mode.py::TestEventsSocketMode::test_middleware_skip
+PASSED tests/scenario_tests/test_events_socket_mode.py::TestEventsSocketMode::test_reaction_added
+PASSED tests/scenario_tests/test_events_socket_mode.py::TestEventsSocketMode::test_stable_auto_ack
+PASSED tests/scenario_tests/test_events_socket_mode.py::TestEventsSocketMode::test_self_events
+PASSED tests/scenario_tests/test_events_socket_mode.py::TestEventsSocketMode::test_self_member_join_left_events
+PASSED tests/scenario_tests/test_events_socket_mode.py::TestEventsSocketMode::test_member_join_left_events
+PASSED tests/scenario_tests/test_events_socket_mode.py::TestEventsSocketMode::test_uninstallation_and_revokes
+PASSED tests/scenario_tests/test_events_token_revocations.py::TestEventsTokenRevocations::test_no_installation_store
+PASSED tests/scenario_tests/test_events_token_revocations.py::TestEventsTokenRevocations::test_tokens_revoked
+PASSED tests/scenario_tests/test_events_token_revocations.py::TestEventsTokenRevocations::test_app_uninstalled
+PASSED tests/scenario_tests/test_events_url_verification.py::TestEventsUrlVerification::test_default
+PASSED tests/scenario_tests/test_events_url_verification.py::TestEventsUrlVerification::test_disabled
+PASSED tests/scenario_tests/test_installation_store_authorize.py::TestInstallationStoreAuthorize::test_success
+PASSED tests/scenario_tests/test_lazy.py::TestErrorHandler::test_lazy
+PASSED tests/scenario_tests/test_lazy.py::TestErrorHandler::test_lazy_class
+PASSED tests/scenario_tests/test_lazy.py::TestErrorHandler::test_issue_545_context_copy_failure
+PASSED tests/scenario_tests/test_listener_middleware.py::TestListenerMiddleware::test_return_response
+PASSED tests/scenario_tests/test_listener_middleware.py::TestListenerMiddleware::test_next
+PASSED tests/scenario_tests/test_listener_middleware.py::TestListenerMiddleware::test_class_next
+PASSED tests/scenario_tests/test_message.py::TestMessage::test_string_keyword
+PASSED tests/scenario_tests/test_message.py::TestMessage::test_all_message_matching_1
+PASSED tests/scenario_tests/test_message.py::TestMessage::test_all_message_matching_2
+PASSED tests/scenario_tests/test_message.py::TestMessage::test_string_keyword_capturing
+PASSED tests/scenario_tests/test_message.py::TestMessage::test_string_keyword_capturing2
+PASSED tests/scenario_tests/test_message.py::TestMessage::test_string_keyword_capturing_multi_capture
+PASSED tests/scenario_tests/test_message.py::TestMessage::test_string_keyword_unmatched
+PASSED tests/scenario_tests/test_message.py::TestMessage::test_regexp_keyword
+PASSED tests/scenario_tests/test_message.py::TestMessage::test_regexp_keyword_unmatched
+PASSED tests/scenario_tests/test_message.py::TestMessage::test_issue_232_message_listener_middleware
+PASSED tests/scenario_tests/test_message.py::TestMessage::test_issue_561_matchers
+PASSED tests/scenario_tests_async/test_app.py::TestAsyncApp::test_non_coroutine_func_listener
+PASSED tests/scenario_tests_async/test_app.py::TestAsyncApp::test_listener_registration_error
+PASSED tests/scenario_tests_async/test_app.py::TestAsyncApp::test_invalid_client_type
+PASSED tests/scenario_tests_async/test_app.py::TestAsyncApp::test_valid_single_auth
+PASSED tests/scenario_tests_async/test_app.py::TestAsyncApp::test_token_absence
+PASSED tests/scenario_tests_async/test_app.py::TestAsyncApp::test_valid_multi_auth
+PASSED tests/scenario_tests_async/test_app.py::TestAsyncApp::test_valid_multi_auth_oauth_flow
+PASSED tests/scenario_tests_async/test_app.py::TestAsyncApp::test_valid_multi_auth_client_id_absence
+PASSED tests/scenario_tests_async/test_app.py::TestAsyncApp::test_valid_multi_auth_secret_absence
+PASSED tests/scenario_tests_async/test_app.py::TestAsyncApp::test_authorize_conflicts
+PASSED tests/scenario_tests_async/test_app.py::TestAsyncApp::test_installation_store_conflicts
+PASSED tests/scenario_tests_async/test_app.py::TestAsyncApp::test_proxy_ssl_for_respond
+PASSED tests/scenario_tests_async/test_app.py::TestAsyncApp::test_argument_logger_propagation
+PASSED tests/scenario_tests_async/test_block_actions.py::TestAsyncBlockActions::test_mock_server_is_running
+PASSED tests/scenario_tests_async/test_block_actions.py::TestAsyncBlockActions::test_success
+PASSED tests/scenario_tests_async/test_block_actions.py::TestAsyncBlockActions::test_success_2
+PASSED tests/scenario_tests_async/test_block_actions.py::TestAsyncBlockActions::test_default_type
+PASSED tests/scenario_tests_async/test_block_actions.py::TestAsyncBlockActions::test_default_type_no_block_id
+PASSED tests/scenario_tests_async/test_block_actions.py::TestAsyncBlockActions::test_default_type_no_action_id
+PASSED tests/scenario_tests_async/test_block_actions.py::TestAsyncBlockActions::test_default_type_unmatched_block_id
+PASSED tests/scenario_tests_async/test_block_actions.py::TestAsyncBlockActions::test_process_before_response
+PASSED tests/scenario_tests_async/test_block_actions.py::TestAsyncBlockActions::test_process_before_response_2
+PASSED tests/scenario_tests_async/test_block_actions.py::TestAsyncBlockActions::test_failure
+PASSED tests/scenario_tests_async/test_block_actions.py::TestAsyncBlockActions::test_failure_2
+PASSED tests/scenario_tests_async/test_block_actions_respond.py::TestAsyncBlockActionsRespond::test_success
+PASSED tests/slack_bolt/context/test_ack.py::TestAck::test_text
+PASSED tests/slack_bolt/context/test_ack.py::TestAck::test_attachments
+PASSED tests/slack_bolt/context/test_ack.py::TestAck::test_blocks
+PASSED tests/slack_bolt/context/test_ack.py::TestAck::test_unfurl_options
+PASSED tests/slack_bolt/context/test_ack.py::TestAck::test_options
+PASSED tests/slack_bolt/context/test_ack.py::TestAck::test_option_groups
+PASSED tests/slack_bolt/context/test_ack.py::TestAck::test_response_type
+PASSED tests/slack_bolt/context/test_ack.py::TestAck::test_dialog_errors
+PASSED tests/slack_bolt/context/test_ack.py::TestAck::test_view_errors
+PASSED tests/slack_bolt/context/test_ack.py::TestAck::test_view_update
+PASSED tests/slack_bolt/context/test_ack.py::TestAck::test_view_update_2
+PASSED tests/slack_bolt/context/test_respond_internals.py::TestRespondInternals::test_build_message_empty
+PASSED tests/slack_bolt/context/test_respond_internals.py::TestRespondInternals::test_build_message_text
+PASSED tests/slack_bolt/context/test_respond_internals.py::TestRespondInternals::test_build_message_blocks
+PASSED tests/slack_bolt/context/test_respond_internals.py::TestRespondInternals::test_build_message_blocks2
+PASSED tests/slack_bolt/context/test_respond_internals.py::TestRespondInternals::test_build_message_attachments
+PASSED tests/slack_bolt/context/test_respond_internals.py::TestRespondInternals::test_build_message_response_type
+PASSED tests/slack_bolt/context/test_respond_internals.py::TestRespondInternals::test_build_message_replace_original
+PASSED tests/slack_bolt/context/test_respond_internals.py::TestRespondInternals::test_build_message_delete_original
+PASSED tests/slack_bolt/context/test_respond_internals.py::TestRespondInternals::test_build_message_unfurl_options
+PASSED tests/slack_bolt/context/test_respond_internals.py::TestRespondInternals::test_metadata
+PASSED tests/slack_bolt/listener/test_listener_completion_handler.py::TestListenerCompletionHandler::test_handler
+PASSED tests/slack_bolt/listener/test_listener_start_handler.py::TestListenerStartHandler::test_handler
+PASSED tests/slack_bolt/listener_matcher/test_builtins.py::TestBuiltins::test_block_action
+PASSED tests/slack_bolt/listener_matcher/test_builtins.py::TestBuiltins::test_workflow_step_execute
+PASSED tests/slack_bolt/listener_matcher/test_builtins.py::TestBuiltins::test_events
+PASSED tests/slack_bolt/listener_matcher/test_builtins.py::TestBuiltins::test_global_shortcuts
+PASSED tests/slack_bolt/listener_matcher/test_builtins.py::TestBuiltins::test_message_shortcuts
+PASSED tests/slack_bolt/listener_matcher/test_custom_listener_matcher.py::TestCustomListenerMatcher::test_instantiation
+PASSED tests/slack_bolt/logger/test_unmatched_suggestions.py::TestUnmatchedPatternSuggestions::test_unknown_patterns
+PASSED tests/slack_bolt/logger/test_unmatched_suggestions.py::TestUnmatchedPatternSuggestions::test_block_actions
+PASSED tests/slack_bolt/logger/test_unmatched_suggestions.py::TestUnmatchedPatternSuggestions::test_attachment_actions
+PASSED tests/slack_bolt/logger/test_unmatched_suggestions.py::TestUnmatchedPatternSuggestions::test_app_mention_event
+PASSED tests/slack_bolt/logger/test_unmatched_suggestions.py::TestUnmatchedPatternSuggestions::test_commands
+PASSED tests/slack_bolt/logger/test_unmatched_suggestions.py::TestUnmatchedPatternSuggestions::test_shortcut
+PASSED tests/slack_bolt/logger/test_unmatched_suggestions.py::TestUnmatchedPatternSuggestions::test_view
+PASSED tests/slack_bolt/logger/test_unmatched_suggestions.py::TestUnmatchedPatternSuggestions::test_block_suggestion
+PASSED tests/slack_bolt/logger/test_unmatched_suggestions.py::TestUnmatchedPatternSuggestions::test_dialog_suggestion
+PASSED tests/slack_bolt/logger/test_unmatched_suggestions.py::TestUnmatchedPatternSuggestions::test_step
+PASSED tests/slack_bolt/oauth/test_internals.py::TestOAuthInternals::test_build_detailed_error_invalid_browser
+PASSED tests/slack_bolt/oauth/test_internals.py::TestOAuthInternals::test_build_detailed_error_invalid_state
+PASSED tests/slack_bolt/oauth/test_internals.py::TestOAuthInternals::test_build_detailed_error_missing_code
+PASSED tests/slack_bolt/oauth/test_internals.py::TestOAuthInternals::test_build_detailed_error_storage_error
+PASSED tests/slack_bolt/oauth/test_internals.py::TestOAuthInternals::test_build_detailed_error_others
+PASSED tests/slack_bolt/oauth/test_internals.py::TestOAuthInternals::test_build_detailed_error_others_with_tags
+PASSED tests/slack_bolt/oauth/test_internals.py::TestOAuthInternals::test_build_default_install_page_html
+PASSED tests/slack_bolt/request/test_internals.py::TestRequestInternals::test_channel_id_extraction
+PASSED tests/slack_bolt/request/test_internals.py::TestRequestInternals::test_user_id_extraction
+PASSED tests/slack_bolt/request/test_internals.py::TestRequestInternals::test_team_id_extraction
+PASSED tests/slack_bolt/request/test_internals.py::TestRequestInternals::test_enterprise_id_extraction
+PASSED tests/slack_bolt/request/test_internals.py::TestRequestInternals::test_is_enterprise_install_extraction
+PASSED tests/slack_bolt/request/test_internals.py::TestRequestInternals::test_actor_enterprise_id
+PASSED tests/slack_bolt/request/test_internals.py::TestRequestInternals::test_actor_team_id
+PASSED tests/slack_bolt/request/test_internals.py::TestRequestInternals::test_actor_user_id
+PASSED tests/slack_bolt/request/test_internals.py::TestRequestInternals::test_parse_query
+PASSED tests/slack_bolt/request/test_internals.py::TestRequestInternals::test_slack_connect_patterns
+PASSED tests/slack_bolt/request/test_request.py::TestRequest::test_all_none_inputs_http
+PASSED tests/slack_bolt/request/test_request.py::TestRequest::test_all_none_inputs_socket_mode
+PASSED tests/slack_bolt/request/test_request.py::TestRequest::test_org_wide_installations_block_actions
+PASSED tests/slack_bolt/request/test_request.py::TestRequest::test_org_wide_installations_view_submission
+PASSED tests/slack_bolt/request/test_request.py::TestRequest::test_org_wide_installations_view_closed
+PASSED tests/slack_bolt/util/test_util.py::TestUtil::test_convert_to_dict
+PASSED tests/slack_bolt/util/test_util.py::TestUtil::test_convert_to_dict_errors
+PASSED tests/slack_bolt/util/test_util.py::TestUtil::test_get_boot_message
+PASSED tests/slack_bolt/util/test_util.py::TestUtil::test_get_boot_message_win32
+PASSED tests/slack_bolt/workflows/step/test_step.py::TestStep::test_build
+PASSED tests/slack_bolt/workflows/step/test_step.py::TestStep::test_build_errors
+PASSED tests/slack_bolt_async/app/test_server.py::TestServer::test_instance
+PASSED tests/slack_bolt_async/listener/test_async_listener_completion_handler.py::TestAsyncListenerCompletionHandler::test_handler
+PASSED tests/slack_bolt_async/listener/test_async_listener_start_handler.py::TestAsyncListenerStartHandler::test_handler
+PASSED tests/slack_bolt_async/listener_matcher/test_async_custom_listener_matcher.py::TestAsyncCustomListenerMatcher::test_instantiation
+PASSED tests/slack_bolt_async/logger/test_unmatched_suggestions.py::TestUnmatchedPatternSuggestions::test_unknown_patterns
+PASSED tests/slack_bolt_async/logger/test_unmatched_suggestions.py::TestUnmatchedPatternSuggestions::test_block_actions
+PASSED tests/slack_bolt_async/logger/test_unmatched_suggestions.py::TestUnmatchedPatternSuggestions::test_attachment_actions
+PASSED tests/slack_bolt_async/logger/test_unmatched_suggestions.py::TestUnmatchedPatternSuggestions::test_app_mention_event
+PASSED tests/slack_bolt_async/logger/test_unmatched_suggestions.py::TestUnmatchedPatternSuggestions::test_commands
+PASSED tests/slack_bolt_async/logger/test_unmatched_suggestions.py::TestUnmatchedPatternSuggestions::test_shortcut
+PASSED tests/slack_bolt_async/logger/test_unmatched_suggestions.py::TestUnmatchedPatternSuggestions::test_view
+PASSED tests/slack_bolt_async/logger/test_unmatched_suggestions.py::TestUnmatchedPatternSuggestions::test_block_suggestion
+PASSED tests/slack_bolt_async/logger/test_unmatched_suggestions.py::TestUnmatchedPatternSuggestions::test_dialog_suggestion
+PASSED tests/slack_bolt_async/logger/test_unmatched_suggestions.py::TestUnmatchedPatternSuggestions::test_step
+PASSED tests/slack_bolt_async/middleware/request_verification/test_request_verification.py::TestAsyncRequestVerification::test_valid
+PASSED tests/slack_bolt_async/middleware/request_verification/test_request_verification.py::TestAsyncRequestVerification::test_invalid
+PASSED tests/slack_bolt_async/oauth/test_async_oauth_flow.py::TestAsyncOAuthFlow::test_instantiation
+PASSED tests/slack_bolt_async/oauth/test_async_oauth_flow.py::TestAsyncOAuthFlow::test_scopes_as_str
+PASSED tests/slack_bolt_async/oauth/test_async_oauth_flow.py::TestAsyncOAuthFlow::test_instantiation_non_async_settings
+PASSED tests/slack_bolt_async/oauth/test_async_oauth_flow.py::TestAsyncOAuthFlow::test_instantiation_non_async_settings_to_app
+PASSED tests/slack_bolt_async/oauth/test_async_oauth_flow.py::TestAsyncOAuthFlow::test_handle_installation_default
+PASSED tests/slack_bolt_async/oauth/test_async_oauth_flow.py::TestAsyncOAuthFlow::test_handle_installation_no_rendering
+PASSED tests/slack_bolt_async/oauth/test_async_oauth_flow.py::TestAsyncOAuthFlow::test_handle_installation_team_param
+PASSED tests/slack_bolt_async/oauth/test_async_oauth_flow.py::TestAsyncOAuthFlow::test_handle_installation_no_state_validation
+PASSED tests/slack_bolt_async/oauth/test_async_oauth_flow.py::TestAsyncOAuthFlow::test_handle_callback
+PASSED tests/slack_bolt_async/oauth/test_async_oauth_flow.py::TestAsyncOAuthFlow::test_handle_callback_invalid_state
+PASSED tests/slack_bolt_async/oauth/test_async_oauth_flow.py::TestAsyncOAuthFlow::test_handle_callback_no_state_validation
+PASSED tests/slack_bolt_async/oauth/test_async_oauth_flow.py::TestAsyncOAuthFlow::test_handle_callback_using_options
+186 passed, 38 warnings in 11.22s
+Updated 3 paths from abff8d18
+   Updating https://github.com/radinshayanfar/SWE-bench.git (ec4a42631acca692e56b168268d54296aa52ed24)
+    Updated https://github.com/radinshayanfar/SWE-bench.git (ec4a42631acca692e56b168268d54296aa52ed24)
+   Building swebench @ git+https://github.com/radinshayanfar/SWE-bench.git@ec4a42631acca692e56b168268d54296aa52ed24
+Downloading pyarrow (47.8MiB)
+Downloading numpy (15.9MiB)
+Downloading pandas (10.5MiB)
+Downloading virtualenv (5.1MiB)
+Downloading hf-xet (4.3MiB)
+Downloading aiohttp (1.7MiB)
+Downloading chardet (1.4MiB)
+Downloading pygments (1.2MiB)
+      Built swebench @ git+https://github.com/radinshayanfar/SWE-bench.git@ec4a42631acca692e56b168268d54296aa52ed24
+ Downloading pygments
+ Downloading aiohttp
+ Downloading chardet
+ Downloading hf-xet
+ Downloading virtualenv
+ Downloading pandas
+ Downloading numpy
+ Downloading pyarrow
+Installed 73 packages in 91ms
+FeatBench results starts here
+PASSED
+FeatBench results ends here

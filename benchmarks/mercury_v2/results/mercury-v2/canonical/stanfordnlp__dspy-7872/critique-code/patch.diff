@@ -1,0 +1,163 @@
+diff --git a/dspy/adapters/types/image.py b/dspy/adapters/types/image.py
+index 904b85ffe..0f17b4363 100644
+--- a/dspy/adapters/types/image.py
++++ b/dspy/adapters/types/image.py
+@@ -1,5 +1,6 @@
+ import base64
+ import io
++import mimetypes
+ import os
+ from typing import Any, Dict, List, Union
+ from urllib.parse import urlparse
+@@ -95,8 +96,8 @@ def encode_image(image: Union[str, bytes, "PILImage.Image", dict], download_imag
+         # NOTE: Not doing other validation for now
+         return image["url"]
+     elif isinstance(image, str):
+-        if image.startswith("data:image/"):
+-            # Already a data URI
++        if image.startswith("data:"):
++            # Already a data URI (any media type, e.g. image, application/pdf, video)
+             return image
+         elif os.path.isfile(image):
+             # File path
+@@ -129,48 +130,116 @@ def encode_image(image: Union[str, bytes, "PILImage.Image", dict], download_imag
+ 
+ 
+ def _encode_image_from_file(file_path: str) -> str:
+-    """Encode an image from a file path to a base64 data URI."""
+-    with open(file_path, "rb") as image_file:
+-        image_data = image_file.read()
+-    file_extension = _get_file_extension(file_path)
+-    encoded_image = base64.b64encode(image_data).decode("utf-8")
+-    return f"data:image/{file_extension};base64,{encoded_image}"
++    """Encode a file from a local path to a base64 data URI of the detected MIME type."""
++    mime_type = _get_mime_type_from_path(file_path)
++    if not mime_type:
++        raise ValueError(
++            f"Could not determine the MIME type of '{file_path}'. "
++            "The file must have a recognizable extension or a detectable file type."
++        )
++    with open(file_path, "rb") as media_file:
++        media_data = media_file.read()
++    encoded_data = base64.b64encode(media_data).decode("utf-8")
++    return f"data:{mime_type};base64,{encoded_data}"
++
++
++def _get_mime_type_from_path(path: str) -> str:
++    """Determine the MIME type of a local file path using standard file type detection."""
++    mime_type, _ = mimetypes.guess_type(path)
++    if mime_type:
++        return mime_type
++    # Fall back to extension-based lookup for types mimetypes may not know (e.g. markdown)
++    extension = _get_file_extension(path)
++    if extension in _EXTENSION_TO_MIME:
++        return _EXTENSION_TO_MIME[extension]
++    return None
++
++
++_EXTENSION_TO_MIME = {
++    "md": "text/markdown",
++    "markdown": "text/markdown",
++    "mp3": "audio/mpeg",
++    "m4a": "audio/mp4",
++    "aac": "audio/aac",
++    "wav": "audio/wav",
++    "ogg": "audio/ogg",
++    "oga": "audio/ogg",
++    "weba": "audio/webm",
++    "flac": "audio/flac",
++    "mp4": "video/mp4",
++    "m4v": "video/mp4",
++    "mov": "video/quicktime",
++    "avi": "video/x-msvideo",
++    "wmv": "video/x-ms-wmv",
++    "webm": "video/webm",
++    "mkv": "video/x-matroska",
++    "mpg": "video/mpeg",
++    "mpeg": "video/mpeg",
++    "3gp": "video/3gpp",
++    "3gpp": "video/3gpp",
++    "ts": "video/mp2t",
++    "woff": "font/woff",
++    "woff2": "font/woff2",
++}
+ 
+ 
+ def _encode_image_from_url(image_url: str) -> str:
+-    """Encode an image from a URL to a base64 data URI."""
++    """Encode a file from a URL to a base64 data URI using the Content-Type header.
++
++    Falls back to URL-based MIME type detection if the header isn't available.
++    """
+     response = requests.get(image_url)
+     response.raise_for_status()
+-    content_type = response.headers.get("Content-Type", "")
+-    if content_type.startswith("image/"):
+-        file_extension = content_type.split("/")[-1]
+-    else:
+-        # Fallback to file extension from URL or default to 'png'
+-        file_extension = _get_file_extension(image_url) or "png"
+-    encoded_image = base64.b64encode(response.content).decode("utf-8")
+-    return f"data:image/{file_extension};base64,{encoded_image}"
++    content_type = (response.headers.get("Content-Type") or "").split(";", 1)[0].strip()
++    if not content_type:
++        # Fallback to URL-based MIME type detection
++        content_type = _get_mime_type_from_path(urlparse(image_url).path)
++    if not content_type:
++        raise ValueError(
++            f"Could not determine the MIME type of the content at '{image_url}'. "
++            "The response did not include a Content-Type header and the URL has no "
++            "recognizable file extension."
++        )
++    encoded_data = base64.b64encode(response.content).decode("utf-8")
++    return f"data:{content_type};base64,{encoded_data}"
+ 
+ def _encode_pil_image(image: 'PILImage') -> str:
+-    """Encode a PIL Image object to a base64 data URI."""
++    """Encode a PIL Image object to a base64 data URI using its format's MIME type."""
+     buffered = io.BytesIO()
+-    file_extension = (image.format or "PNG").lower()
+-    image.save(buffered, format=file_extension)
+-    encoded_image = base64.b64encode(buffered.getvalue()).decode("utf-8")
+-    return f"data:image/{file_extension};base64,{encoded_image}"
++    image_format = image.format or "PNG"
++    image.save(buffered, format=image_format)
++    mime_type = _get_mime_type_for_image_format(image_format)
++    encoded_data = base64.b64encode(buffered.getvalue()).decode("utf-8")
++    return f"data:{mime_type};base64,{encoded_data}"
++
++
++def _get_mime_type_for_image_format(image_format: str) -> str:
++    """Map a PIL Image format name (e.g. 'JPEG') to its proper MIME type."""
++    image_format = (image_format or "PNG").upper()
++    if PIL_AVAILABLE and image_format in getattr(PILImage, "MIME", {}):
++        return PILImage.MIME[image_format]
++    mime_type, _ = mimetypes.guess_type(f"image.{image_format.lower()}")
++    if mime_type:
++        return mime_type
++    raise ValueError(f"Could not determine the MIME type for image format '{image_format}'.")
+ 
+ 
+ def _get_file_extension(path_or_url: str) -> str:
+     """Extract the file extension from a file path or URL."""
+-    extension = os.path.splitext(urlparse(path_or_url).path)[1].lstrip(".").lower()
+-    return extension or "png"  # Default to 'png' if no extension found
++    return os.path.splitext(urlparse(path_or_url).path)[1].lstrip(".").lower()
+ 
+ 
+ def is_image(obj) -> bool:
+-    """Check if the object is an image or a valid image reference."""
++    """Check if the object is an image or a valid media file reference.
++
++    Recognizes any data URI (not just image data URIs), any local file path,
++    URLs, and PIL Image objects, so media of any type can flow through the
++    same interface used previously for images only.
++    """
+     if PIL_AVAILABLE and isinstance(obj, PILImage.Image):
+         return True
+     if isinstance(obj, str):
+-        if obj.startswith("data:image/"):
++        if obj.startswith("data:"):
+             return True
+         elif os.path.isfile(obj):
+             return True

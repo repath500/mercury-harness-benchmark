@@ -1,0 +1,95 @@
+diff --git a/aiogram/dispatcher/dispatcher.py b/aiogram/dispatcher/dispatcher.py
+index 8b6987cb..a9fb8183 100644
+--- a/aiogram/dispatcher/dispatcher.py
++++ b/aiogram/dispatcher/dispatcher.py
+@@ -328,6 +328,7 @@ class Dispatcher(Router):
+         handle_as_tasks: bool = True,
+         backoff_config: BackoffConfig = DEFAULT_BACKOFF_CONFIG,
+         allowed_updates: Optional[List[str]] = None,
++        tasks_concurrency_limit: Optional[int] = None,
+         **kwargs: Any,
+     ) -> None:
+         """
+@@ -341,6 +342,10 @@ class Dispatcher(Router):
+         loggers.dispatcher.info(
+             "Run polling for bot @%s id=%d - %r", user.username, bot.id, user.full_name
+         )
++        semaphore: Optional[asyncio.Semaphore] = None
++        if handle_as_tasks and tasks_concurrency_limit is not None:
++            semaphore = asyncio.Semaphore(tasks_concurrency_limit)
++
+         try:
+             async for update in self._listen_updates(
+                 bot,
+@@ -350,9 +355,19 @@ class Dispatcher(Router):
+             ):
+                 handle_update = self._process_update(bot=bot, update=update, **kwargs)
+                 if handle_as_tasks:
++                    if semaphore is not None:
++                        # Wait for a free slot before creating the task
++                        # to prevent creating too many tasks at once
++                        await semaphore.acquire()
+                     handle_update_task = asyncio.create_task(handle_update)
+                     self._handle_update_tasks.add(handle_update_task)
+-                    handle_update_task.add_done_callback(self._handle_update_tasks.discard)
++
++                    def done_callback(task: asyncio.Task[Any]) -> None:
++                        self._handle_update_tasks.discard(task)
++                        if semaphore is not None:
++                            semaphore.release()
++
++                    handle_update_task.add_done_callback(done_callback)
+                 else:
+                     await handle_update
+         finally:
+@@ -466,6 +481,7 @@ class Dispatcher(Router):
+         allowed_updates: Optional[Union[List[str], UNSET_TYPE]] = UNSET,
+         handle_signals: bool = True,
+         close_bot_session: bool = True,
++        tasks_concurrency_limit: Optional[int] = None,
+         **kwargs: Any,
+     ) -> None:
+         """
+@@ -479,6 +495,9 @@ class Dispatcher(Router):
+                By default, all used update types are enabled (resolved from handlers)
+         :param handle_signals: handle signals (SIGINT/SIGTERM)
+         :param close_bot_session: close bot sessions on shutdown
++        :param tasks_concurrency_limit: Maximum number of updates that can be processed
++               simultaneously. Works only if ``handle_as_tasks=True``. If ``None`` (default),
++               the number of concurrently processed updates is not limited.
+         :param kwargs: contextual data
+         :return:
+         """
+@@ -534,6 +553,7 @@ class Dispatcher(Router):
+                             polling_timeout=polling_timeout,
+                             backoff_config=backoff_config,
+                             allowed_updates=allowed_updates,
++                            tasks_concurrency_limit=tasks_concurrency_limit,
+                             **workflow_data,
+                         )
+                     )
+@@ -568,6 +588,7 @@ class Dispatcher(Router):
+         allowed_updates: Optional[Union[List[str], UNSET_TYPE]] = UNSET,
+         handle_signals: bool = True,
+         close_bot_session: bool = True,
++        tasks_concurrency_limit: Optional[int] = None,
+         **kwargs: Any,
+     ) -> None:
+         """
+@@ -580,6 +601,9 @@ class Dispatcher(Router):
+         :param allowed_updates: List of the update types you want your bot to receive
+         :param handle_signals: handle signals (SIGINT/SIGTERM)
+         :param close_bot_session: close bot sessions on shutdown
++        :param tasks_concurrency_limit: Maximum number of updates that can be processed
++               simultaneously. Works only if ``handle_as_tasks=True``. If ``None`` (default),
++               the number of concurrently processed updates is not limited.
+         :param kwargs: contextual data
+         :return:
+         """
+@@ -594,5 +618,6 @@ class Dispatcher(Router):
+                     allowed_updates=allowed_updates,
+                     handle_signals=handle_signals,
+                     close_bot_session=close_bot_session,
++                    tasks_concurrency_limit=tasks_concurrency_limit,
+                 )
+             )

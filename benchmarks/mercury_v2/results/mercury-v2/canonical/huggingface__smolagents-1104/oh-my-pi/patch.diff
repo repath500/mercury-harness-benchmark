@@ -1,0 +1,45 @@
+diff --git a/src/smolagents/memory.py b/src/smolagents/memory.py
+index 34505d4..086b3ee 100644
+--- a/src/smolagents/memory.py
++++ b/src/smolagents/memory.py
+@@ -152,7 +152,10 @@ class PlanningStep(MemoryStep):
+     def to_messages(self, summary_mode: bool, **kwargs) -> List[Message]:
+         if summary_mode:
+             return []
+-        return [Message(role=MessageRole.ASSISTANT, content=[{"type": "text", "text": self.plan.strip()}])]
++        return [
++            Message(role=MessageRole.ASSISTANT, content=[{"type": "text", "text": self.plan.strip()}]),
++            Message(role=MessageRole.USER, content=[{"type": "text", "text": "Now go on and execute this plan."}]),
++        ]
+ 
+ 
+ @dataclass
+diff --git a/tests/test_memory.py b/tests/test_memory.py
+index b7a746e..5020f63 100644
+--- a/tests/test_memory.py
++++ b/tests/test_memory.py
+@@ -118,19 +118,22 @@ def test_planning_step_to_messages():
+         plan="This is a plan.",
+     )
+     messages = planning_step.to_messages(summary_mode=False)
+-    assert len(messages) == 1
++    assert len(messages) == 2
+     for message in messages:
+         assert isinstance(message, dict)
+         assert "role" in message
+         assert "content" in message
+         assert isinstance(message["role"], MessageRole)
+-        assert message["role"] == MessageRole.ASSISTANT
+         assert isinstance(message["content"], list)
+         assert len(message["content"]) == 1
+         for content in message["content"]:
+             assert isinstance(content, dict)
+             assert "type" in content
+             assert "text" in content
++    assert messages[0]["role"] == MessageRole.ASSISTANT
++    assert messages[0]["content"][0]["text"] == "This is a plan."
++    assert messages[1]["role"] == MessageRole.USER
++    assert messages[1]["content"][0]["text"] == "Now go on and execute this plan."
+ 
+ 
+ def test_task_step_to_messages():

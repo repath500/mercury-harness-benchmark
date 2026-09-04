@@ -1,0 +1,57 @@
+diff --git a/src/smolagents/local_python_executor.py b/src/smolagents/local_python_executor.py
+index 0bfa53b..de5570a 100644
+--- a/src/smolagents/local_python_executor.py
++++ b/src/smolagents/local_python_executor.py
+@@ -1494,6 +1494,7 @@ class LocalPythonExecutor(PythonExecutor):
+     def __init__(
+         self,
+         additional_authorized_imports: list[str],
++        additional_functions: dict[str, Callable] | None = None,
+         max_print_outputs_length: int | None = None,
+     ):
+         self.custom_tools = {}
+@@ -1502,6 +1503,7 @@ class LocalPythonExecutor(PythonExecutor):
+         if max_print_outputs_length is None:
+             self.max_print_outputs_length = DEFAULT_MAX_LEN_OUTPUT
+         self.additional_authorized_imports = additional_authorized_imports
++        self.additional_functions = additional_functions if additional_functions is not None else {}
+         self.authorized_imports = list(set(BASE_BUILTIN_MODULES) | set(self.additional_authorized_imports))
+         # TODO: assert self.authorized imports are all installed locally
+         self.static_tools = None
+@@ -1522,7 +1524,7 @@ class LocalPythonExecutor(PythonExecutor):
+         self.state.update(variables)
+ 
+     def send_tools(self, tools: dict[str, Tool]):
+-        self.static_tools = {**tools, **BASE_PYTHON_TOOLS.copy()}
++        self.static_tools = {**tools, **self.additional_functions, **BASE_PYTHON_TOOLS.copy()}
+ 
+ 
+ __all__ = ["evaluate_python_code", "LocalPythonExecutor"]
+diff --git a/tests/test_local_python_executor.py b/tests/test_local_python_executor.py
+index f7d43c2..0579566 100644
+--- a/tests/test_local_python_executor.py
++++ b/tests/test_local_python_executor.py
+@@ -1736,6 +1736,23 @@ class TestLocalPythonExecutor:
+         with pytest.raises(InterpreterError, match=".*Cannot unpack tuple of wrong size"):
+             executor(code)
+ 
++    def test_additional_functions_are_available(self):
++        def multiply_by_10(x: int) -> int:
++            return x * 10
++
++        executor = LocalPythonExecutor(
++            additional_authorized_imports=[],
++            additional_functions={"multiply_by_10": multiply_by_10},
++        )
++        executor.send_tools({})
++        result, logs, is_final_answer = executor("multiply_by_10(5)")
++        assert result == 50
++        assert is_final_answer is False
++
++    def test_additional_functions_default_to_empty(self):
++        executor = LocalPythonExecutor(additional_authorized_imports=[])
++        assert executor.additional_functions == {}
++
+ 
+ class TestLocalPythonExecutorSecurity:
+     @pytest.mark.parametrize(

@@ -27,8 +27,8 @@ that apply to those files. The support change is also recorded as
 
 ## Lieflat Charts
 
-The visual companion is published separately in the
-[`repath500/lieflat-charts`](https://github.com/repath500/lieflat-charts) fork,
-derived from [`larashero3-dotcom/lieflat-charts`](https://github.com/larashero3-dotcom/lieflat-charts).
-That repository remains under its upstream PolyForm Noncommercial License.
-The benchmark repository does not relicense Lieflat Charts.
+The charts use the visual grammar of the upstream
+[`larashero3-dotcom/lieflat-charts`](https://github.com/larashero3-dotcom/lieflat-charts)
+skill as a design reference. No Lieflat Charts fork was created, copied, or
+published for this benchmark, and the benchmark repository does not relicense
+or redistribute that project.

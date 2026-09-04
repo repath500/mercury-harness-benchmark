@@ -1,0 +1,440 @@
++ cd /testbed
++ pip install -e .
+Looking in indexes: https://pypi.tuna.tsinghua.edu.cn/simple
+Obtaining file:///testbed
+  Installing build dependencies: started
+  Installing build dependencies: finished with status 'done'
+  Checking if build backend supports build_editable: started
+  Checking if build backend supports build_editable: finished with status 'done'
+  Getting requirements to build editable: started
+  Getting requirements to build editable: finished with status 'done'
+  Installing backend dependencies: started
+  Installing backend dependencies: finished with status 'done'
+  Preparing editable metadata (pyproject.toml): started
+  Preparing editable metadata (pyproject.toml): finished with status 'done'
+Requirement already satisfied: numpy in /usr/local/lib/python3.11/site-packages (from Mesa==3.1.0.dev0) (2.3.2)
+Requirement already satisfied: pandas in /usr/local/lib/python3.11/site-packages (from Mesa==3.1.0.dev0) (2.3.2)
+Requirement already satisfied: tqdm in /usr/local/lib/python3.11/site-packages (from Mesa==3.1.0.dev0) (4.67.1)
+Requirement already satisfied: python-dateutil>=2.8.2 in /usr/local/lib/python3.11/site-packages (from pandas->Mesa==3.1.0.dev0) (2.9.0.post0)
+Requirement already satisfied: pytz>=2020.1 in /usr/local/lib/python3.11/site-packages (from pandas->Mesa==3.1.0.dev0) (2025.2)
+Requirement already satisfied: tzdata>=2022.7 in /usr/local/lib/python3.11/site-packages (from pandas->Mesa==3.1.0.dev0) (2025.2)
+Requirement already satisfied: six>=1.5 in /usr/local/lib/python3.11/site-packages (from python-dateutil>=2.8.2->pandas->Mesa==3.1.0.dev0) (1.17.0)
+Building wheels for collected packages: Mesa
+  Building editable for Mesa (pyproject.toml): started
+  Building editable for Mesa (pyproject.toml): finished with status 'done'
+  Created wheel for Mesa: filename=mesa-3.1.0.dev0-py3-none-any.whl size=9291 sha256=bade1490d63d3e1b734f6888838d06b247ef9da64a1248f0005a8bf39aa91be1
+  Stored in directory: /tmp/pip-ephem-wheel-cache-2n581l1z/wheels/49/5f/4f/01b7d31ea6ddac9643da788242d33e5fd3467d95d17b032c6b
+Successfully built Mesa
+Installing collected packages: Mesa
+  Attempting uninstall: Mesa
+    Found existing installation: Mesa 3.1.0.dev0
+    Uninstalling Mesa-3.1.0.dev0:
+      Successfully uninstalled Mesa-3.1.0.dev0
+Successfully installed Mesa-3.1.0.dev0
+WARNING: Running pip as the 'root' user can result in broken permissions and conflicting behaviour with the system package manager. It is recommended to use a virtual environment instead: https://pip.pypa.io/warnings/venv
+
+[notice] A new release of pip is available: 24.0 -> 26.2.1
+[notice] To update, run: pip install --upgrade pip
++ git checkout 54d7e28c4e81888af6845d10f3388fa8244289ff tests/test_cell_space.py
+Updated 1 path from 012926ba
++ for path in tests/test_cell_space.py
++ '[' -e tests/test_cell_space.py ']'
++ git ls-files --error-unmatch -- tests/test_cell_space.py
++ echo 'diff --git a/tests/test_cell_space.py b/tests/test_cell_space.py
+index 1111111..2222222 100644
+--- a/tests/test_cell_space.py
++++ b/tests/test_cell_space.py
+@@ -583,6 +583,40 @@ def test_cell_collection():
+     assert len(cells) == len(collection)
+
+
++def test_empty_cell_collection():
++    """Test that CellCollection properly handles empty collections."""
++    rng = random.Random(42)
++
++    # Test initializing with empty collection
++    collection = CellCollection([], random=rng)
++    assert len(collection) == 0
++    assert collection._capacity is None
++    assert list(collection.cells) == []
++    assert list(collection.agents) == []
++
++    # Test selecting from empty collection
++    selected = collection.select(lambda cell: True)
++    assert len(selected) == 0
++    assert selected._capacity is None
++
++    # Test filtering to empty collection
++    n = 10
++    full_collection = CellCollection(
++        [Cell((i,), random=rng) for i in range(n)], random=rng
++    )
++    assert len(full_collection) == n
++
++    # Filter to empty collection
++    empty_result = full_collection.select(lambda cell: False)
++    assert len(empty_result) == 0
++    assert empty_result._capacity is None
++
++    # Test at_most with empty collection
++    at_most_result = full_collection.select(lambda cell: False, at_most=5)
++    assert len(at_most_result) == 0
++    assert at_most_result._capacity is None
++
++
+ ### PropertyLayer tests
+ def test_property_layer_integration():
+     """Test integration of PropertyLayer with DiscrateSpace and Cell."""'
++ git apply --check /tmp/test_patch.diff
++ git apply /tmp/test_patch.diff
+++ mktemp
++ LOG_FILE=/tmp/tmp.jPJQEB8N8R
++ export LOG_FILE
++ exec
++ exec
+++ tee /tmp/tmp.jPJQEB8N8R
++ set +x
+........................................................................ [ 31%]
+................................................................s....... [ 62%]
+........................................................................ [ 93%]
+................                                                         [100%]
+=============================== warnings summary ===============================
+tests/test_cell_space.py: 18 warnings
+tests/test_components_matplotlib.py: 1135 warnings
+tests/test_solara_viz.py: 15 warnings
+  /usr/local/lib/python3.11/site-packages/numpy/matrixlib/defmatrix.py:1117: PendingDeprecationWarning: the matrix subclass is not the recommended way to represent matrices or deal with linear algebra (see https://docs.scipy.org/doc/numpy/user/numpy-for-matlab-users.html). Please adjust your code to use regular ndarray.
+    return matrix(concatenate(arr_rows, axis=0))
+
+tests/test_cell_space.py::test_property_layer_integration
+  /testbed/tests/test_cell_space.py:627: UserWarning: Default value 0 (int) might not be best suitable with dtype=float64.
+    elevation = PropertyLayer("elevation", width, height, default_value=0)
+
+tests/test_cell_space.py::test_property_layer_integration
+  /testbed/tests/test_cell_space.py:627: FutureWarning: The new PropertyLayer and _PropertyGrid classes experimental. It may be changed or removed in any and all future releases, including patch releases.
+  We would love to hear what you think about this new feature. If you have any thoughts, share them with us here: https://github.com/projectmesa/mesa/discussions/1932
+    elevation = PropertyLayer("elevation", width, height, default_value=0)
+
+tests/test_cell_space.py::test_multiple_property_layers
+  /testbed/tests/test_cell_space.py:665: UserWarning: Default value 0 (int) might not be best suitable with dtype=float64.
+    elevation = PropertyLayer("elevation", width, height, default_value=0)
+
+tests/test_cell_space.py::test_multiple_property_layers
+  /testbed/tests/test_cell_space.py:666: UserWarning: Default value 20 (int) might not be best suitable with dtype=float64.
+    temperature = PropertyLayer("temperature", width, height, default_value=20)
+
+tests/test_cell_space.py::test_property_layer_errors
+  /testbed/tests/test_cell_space.py:698: UserWarning: Default value 0 (int) might not be best suitable with dtype=float64.
+    elevation = PropertyLayer("elevation", width, height, default_value=0)
+
+tests/test_components_matplotlib.py::test_draw_space
+  /testbed/mesa/visualization/mpl_space_drawing.py:319: UserWarning: the following fields are not used in agent portrayal and thus ignored: s, c, linecolors.
+    arguments = collect_agent_data(space, agent_portrayal, size=s_default)
+
+tests/test_components_matplotlib.py::test_draw_space
+  /testbed/mesa/visualization/mpl_space_drawing.py:532: UserWarning: the following fields are not used in agent portrayal and thus ignored: s, c, linecolors.
+    arguments = collect_agent_data(space, agent_portrayal, size=s_default)
+
+tests/test_components_matplotlib.py::test_draw_space
+  /testbed/mesa/visualization/mpl_space_drawing.py:272: UserWarning: the following fields are not used in agent portrayal and thus ignored: s, c, linecolors.
+    arguments = collect_agent_data(space, agent_portrayal, size=s_default)
+
+tests/test_components_matplotlib.py::test_draw_space
+  /testbed/mesa/visualization/mpl_space_drawing.py:426: UserWarning: the following fields are not used in agent portrayal and thus ignored: s, c, linecolors.
+    arguments = collect_agent_data(space, agent_portrayal, size=s_default)
+
+tests/test_components_matplotlib.py::test_draw_space
+  /testbed/mesa/visualization/mpl_space_drawing.py:480: UserWarning: the following fields are not used in agent portrayal and thus ignored: s, c, linecolors.
+    arguments = collect_agent_data(space, agent_portrayal, size=s_default)
+
+tests/test_components_matplotlib.py::test_draw_hex_grid
+  /testbed/mesa/visualization/mpl_space_drawing.py:319: UserWarning: the following fields are not used in agent portrayal and thus ignored: s, c.
+    arguments = collect_agent_data(space, agent_portrayal, size=s_default)
+
+tests/test_components_matplotlib.py::test_draw_voronoi_grid
+  /testbed/mesa/visualization/mpl_space_drawing.py:532: UserWarning: the following fields are not used in agent portrayal and thus ignored: s, c.
+    arguments = collect_agent_data(space, agent_portrayal, size=s_default)
+
+tests/test_components_matplotlib.py::test_draw_orthogonal_grid
+  /testbed/mesa/visualization/mpl_space_drawing.py:272: UserWarning: the following fields are not used in agent portrayal and thus ignored: s, c.
+    arguments = collect_agent_data(space, agent_portrayal, size=s_default)
+
+tests/test_components_matplotlib.py::test_draw_continuous_space
+  /testbed/mesa/visualization/mpl_space_drawing.py:480: UserWarning: the following fields are not used in agent portrayal and thus ignored: s, c.
+    arguments = collect_agent_data(space, agent_portrayal, size=s_default)
+
+tests/test_components_matplotlib.py::test_draw_network
+  /testbed/mesa/visualization/mpl_space_drawing.py:426: UserWarning: the following fields are not used in agent portrayal and thus ignored: s, c.
+    arguments = collect_agent_data(space, agent_portrayal, size=s_default)
+
+tests/test_components_matplotlib.py::test_draw_property_layers
+  /testbed/tests/test_components_matplotlib.py:227: UserWarning: Default value 0 (int) might not be best suitable with dtype=float64.
+    grid.add_property_layer(PropertyLayer("test", grid.width, grid.height, 0))
+
+tests/test_components_matplotlib.py::test_draw_property_layers
+  /testbed/tests/test_components_matplotlib.py:234: UserWarning: Default value 0 (int) might not be best suitable with dtype=float64.
+    grid.add_property_layer(PropertyLayer("test", grid.width, grid.height, 0))
+
+tests/test_solara_viz.py::test_call_space_drawer
+  /testbed/mesa/experimental/cell_space/voronoi.py:193: UserWarning: Random number generator not specified, this can make models non-reproducible. Please pass a random number generator explicitly
+    super().__init__(capacity=capacity, random=random, cell_klass=cell_klass)
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+=========================== short test summary info ============================
+PASSED tests/test_cell_space.py::test_orthogonal_grid_neumann
+PASSED tests/test_cell_space.py::test_orthogonal_grid_neumann_3d
+PASSED tests/test_cell_space.py::test_orthogonal_grid_moore
+PASSED tests/test_cell_space.py::test_orthogonal_grid_moore_3d
+PASSED tests/test_cell_space.py::test_orthogonal_grid_moore_4d
+PASSED tests/test_cell_space.py::test_orthogonal_grid_moore_1d
+PASSED tests/test_cell_space.py::test_cell_neighborhood
+PASSED tests/test_cell_space.py::test_hexgrid
+PASSED tests/test_cell_space.py::test_networkgrid
+PASSED tests/test_cell_space.py::test_voronoigrid
+PASSED tests/test_cell_space.py::test_empties_space
+PASSED tests/test_cell_space.py::test_agents_property
+PASSED tests/test_cell_space.py::test_cell
+PASSED tests/test_cell_space.py::test_cell_collection
+PASSED tests/test_cell_space.py::test_empty_cell_collection
+PASSED tests/test_cell_space.py::test_property_layer_integration
+PASSED tests/test_cell_space.py::test_multiple_property_layers
+PASSED tests/test_cell_space.py::test_property_layer_errors
+PASSED tests/test_cell_space.py::test_cell_agent
+PASSED tests/test_cell_space.py::test_grid2DMovingAgent
+PASSED tests/test_cell_space.py::test_patch
+PASSED tests/test_cell_space.py::test_copying_discrete_spaces
+PASSED tests/test_agent.py::test_agent_removal
+PASSED tests/test_agent.py::test_agentset
+PASSED tests/test_agent.py::test_agentset_initialization
+PASSED tests/test_agent.py::test_agentset_serialization
+PASSED tests/test_agent.py::test_agent_membership
+PASSED tests/test_agent.py::test_agent_rng
+PASSED tests/test_agent.py::test_agent_add_remove_discard
+PASSED tests/test_agent.py::test_agentset_get_item
+PASSED tests/test_agent.py::test_agentset_do_str
+PASSED tests/test_agent.py::test_agentset_do_callable
+PASSED tests/test_agent.py::test_agentset_get
+PASSED tests/test_agent.py::test_agentset_agg
+PASSED tests/test_agent.py::test_agentset_set_method
+PASSED tests/test_agent.py::test_agentset_map_str
+PASSED tests/test_agent.py::test_agentset_map_callable
+PASSED tests/test_agent.py::test_agentset_shuffle_do
+PASSED tests/test_agent.py::test_agentset_get_attribute
+PASSED tests/test_agent.py::test_agentset_select_by_type
+PASSED tests/test_agent.py::test_agentset_shuffle
+PASSED tests/test_agent.py::test_agentset_groupby
+PASSED tests/test_batch_run.py::test_make_model_kwargs
+PASSED tests/test_batch_run.py::test_batch_run
+PASSED tests/test_batch_run.py::test_batch_run_with_params
+PASSED tests/test_batch_run.py::test_batch_run_no_agent_reporters
+PASSED tests/test_batch_run.py::test_batch_run_single_core
+PASSED tests/test_batch_run.py::test_batch_run_unhashable_param
+PASSED tests/test_components_matplotlib.py::test_draw_space
+PASSED tests/test_components_matplotlib.py::test_draw_hex_grid
+PASSED tests/test_components_matplotlib.py::test_draw_voronoi_grid
+PASSED tests/test_components_matplotlib.py::test_draw_orthogonal_grid
+PASSED tests/test_components_matplotlib.py::test_draw_continuous_space
+PASSED tests/test_components_matplotlib.py::test_draw_network
+PASSED tests/test_components_matplotlib.py::test_draw_property_layers
+PASSED tests/test_datacollector.py::TestDataCollector::test_agent_records
+PASSED tests/test_datacollector.py::TestDataCollector::test_exports
+PASSED tests/test_datacollector.py::TestDataCollector::test_model_vars
+PASSED tests/test_datacollector.py::TestDataCollector::test_table_rows
+PASSED tests/test_datacollector.py::TestDataCollectorWithAgentTypes::test_agenttype_and_agent_vars
+PASSED tests/test_datacollector.py::TestDataCollectorWithAgentTypes::test_agenttype_reporter_function_with_params
+PASSED tests/test_datacollector.py::TestDataCollectorWithAgentTypes::test_agenttype_reporter_multiple_types
+PASSED tests/test_datacollector.py::TestDataCollectorWithAgentTypes::test_agenttype_reporter_string_attribute
+PASSED tests/test_datacollector.py::TestDataCollectorWithAgentTypes::test_agenttype_superclass_reporter
+PASSED tests/test_datacollector.py::TestDataCollectorWithAgentTypes::test_agenttype_vars
+PASSED tests/test_datacollector.py::TestDataCollectorWithAgentTypes::test_nonexistent_agenttype
+PASSED tests/test_devs.py::test_devs_simulator
+PASSED tests/test_devs.py::test_abm_simulator
+PASSED tests/test_devs.py::test_simulation_event
+PASSED tests/test_devs.py::test_eventlist
+PASSED tests/test_examples.py::test_boltzmann_model
+PASSED tests/test_examples.py::test_conways_game_model
+PASSED tests/test_examples.py::test_schelling_model
+PASSED tests/test_examples.py::test_virus_on_network
+PASSED tests/test_examples.py::test_boid_flockers
+PASSED tests/test_examples.py::test_epstein
+PASSED tests/test_examples.py::test_pd_grid
+PASSED tests/test_examples.py::test_sugarscape_g1mt
+PASSED tests/test_examples.py::test_wolf_sheep
+PASSED tests/test_grid.py::TestSingleGrid::test_agent_move
+PASSED tests/test_grid.py::TestSingleGrid::test_agent_positions
+PASSED tests/test_grid.py::TestSingleGrid::test_agent_remove
+PASSED tests/test_grid.py::TestSingleGrid::test_cell_agent_reporting
+PASSED tests/test_grid.py::TestSingleGrid::test_coord_iter
+PASSED tests/test_grid.py::TestSingleGrid::test_iter_cell_agent_reporting
+PASSED tests/test_grid.py::TestSingleGrid::test_listfree_cell_agent_reporting
+PASSED tests/test_grid.py::TestSingleGrid::test_listfree_iter_cell_agent_reporting
+PASSED tests/test_grid.py::TestSingleGrid::test_neighbors
+PASSED tests/test_grid.py::TestSingleGrid::test_swap_pos
+PASSED tests/test_grid.py::TestSingleGridTorus::test_agent_move
+PASSED tests/test_grid.py::TestSingleGridTorus::test_agent_positions
+PASSED tests/test_grid.py::TestSingleGridTorus::test_agent_remove
+PASSED tests/test_grid.py::TestSingleGridTorus::test_cell_agent_reporting
+PASSED tests/test_grid.py::TestSingleGridTorus::test_coord_iter
+PASSED tests/test_grid.py::TestSingleGridTorus::test_iter_cell_agent_reporting
+PASSED tests/test_grid.py::TestSingleGridTorus::test_listfree_cell_agent_reporting
+PASSED tests/test_grid.py::TestSingleGridTorus::test_listfree_iter_cell_agent_reporting
+PASSED tests/test_grid.py::TestSingleGridTorus::test_neighbors
+PASSED tests/test_grid.py::TestSingleGridTorus::test_swap_pos
+PASSED tests/test_grid.py::TestSingleGridEnforcement::test_enforcement
+PASSED tests/test_grid.py::TestMultiGrid::test_agent_positions
+PASSED tests/test_grid.py::TestMultiGrid::test_neighbors
+PASSED tests/test_grid.py::TestHexSingleGrid::test_neighbors
+PASSED tests/test_grid.py::TestHexSingleGridTorus::test_agent_move
+PASSED tests/test_grid.py::TestHexSingleGridTorus::test_agent_positions
+PASSED tests/test_grid.py::TestHexSingleGridTorus::test_agent_remove
+PASSED tests/test_grid.py::TestHexSingleGridTorus::test_cell_agent_reporting
+PASSED tests/test_grid.py::TestHexSingleGridTorus::test_coord_iter
+PASSED tests/test_grid.py::TestHexSingleGridTorus::test_iter_cell_agent_reporting
+PASSED tests/test_grid.py::TestHexSingleGridTorus::test_listfree_cell_agent_reporting
+PASSED tests/test_grid.py::TestHexSingleGridTorus::test_listfree_iter_cell_agent_reporting
+PASSED tests/test_grid.py::TestHexSingleGridTorus::test_neighbors
+PASSED tests/test_grid.py::TestHexSingleGridTorus::test_swap_pos
+PASSED tests/test_grid.py::TestIndexing::test_int
+PASSED tests/test_grid.py::TestIndexing::test_tuple
+PASSED tests/test_grid.py::TestIndexing::test_list
+PASSED tests/test_grid.py::TestIndexing::test_torus
+PASSED tests/test_grid.py::TestIndexing::test_slice
+PASSED tests/test_import_namespace.py::test_import
+PASSED tests/test_lifespan.py::TestAgentLifespan::test_agent_lifetime
+PASSED tests/test_lifespan.py::TestAgentLifespan::test_ticks_seen
+PASSED tests/test_model.py::test_model_set_up
+PASSED tests/test_model.py::test_running
+PASSED tests/test_model.py::test_seed
+PASSED tests/test_model.py::test_reset_randomizer
+PASSED tests/test_model.py::test_reset_rng
+PASSED tests/test_model.py::test_agent_types
+PASSED tests/test_model.py::test_agents_by_type
+PASSED tests/test_model.py::test_agent_remove
+PASSED tests/test_solara_viz.py::TestMakeUserInput::test_checkbox
+PASSED tests/test_solara_viz.py::TestMakeUserInput::test_label_fallback
+PASSED tests/test_solara_viz.py::TestMakeUserInput::test_slider_int
+PASSED tests/test_solara_viz.py::TestMakeUserInput::test_unsupported_type
+PASSED tests/test_solara_viz.py::test_call_space_drawer
+PASSED tests/test_solara_viz.py::test_slider
+PASSED tests/test_solara_viz.py::test_model_param_checks
+PASSED tests/test_space.py::TestSpaceToroidal::test_agent_matching
+PASSED tests/test_space.py::TestSpaceToroidal::test_agent_positions
+PASSED tests/test_space.py::TestSpaceToroidal::test_bounds
+PASSED tests/test_space.py::TestSpaceToroidal::test_distance_calculations
+PASSED tests/test_space.py::TestSpaceToroidal::test_heading
+PASSED tests/test_space.py::TestSpaceToroidal::test_neighborhood_retrieval
+PASSED tests/test_space.py::TestSpaceNonToroidal::test_agent_matching
+PASSED tests/test_space.py::TestSpaceNonToroidal::test_agent_positions
+PASSED tests/test_space.py::TestSpaceNonToroidal::test_bounds
+PASSED tests/test_space.py::TestSpaceNonToroidal::test_distance_calculations
+PASSED tests/test_space.py::TestSpaceNonToroidal::test_heading
+PASSED tests/test_space.py::TestSpaceNonToroidal::test_neighborhood_retrieval
+PASSED tests/test_space.py::TestSpaceAgentMapping::test_agents_property
+PASSED tests/test_space.py::TestSpaceAgentMapping::test_remove_first
+PASSED tests/test_space.py::TestSpaceAgentMapping::test_remove_last
+PASSED tests/test_space.py::TestSpaceAgentMapping::test_remove_middle
+PASSED tests/test_space.py::TestPropertyLayer::test_aggregate_property_lambda
+PASSED tests/test_space.py::TestPropertyLayer::test_aggregate_property_std_dev
+PASSED tests/test_space.py::TestPropertyLayer::test_aggregate_property_ufunc
+PASSED tests/test_space.py::TestPropertyLayer::test_data_type_consistency
+PASSED tests/test_space.py::TestPropertyLayer::test_initialization
+PASSED tests/test_space.py::TestPropertyLayer::test_initialization_negative_dimensions
+PASSED tests/test_space.py::TestPropertyLayer::test_initialization_zero_dimensions
+PASSED tests/test_space.py::TestPropertyLayer::test_modify_cell_boundary_condition
+PASSED tests/test_space.py::TestPropertyLayer::test_modify_cell_invalid_operation
+PASSED tests/test_space.py::TestPropertyLayer::test_modify_cell_lambda
+PASSED tests/test_space.py::TestPropertyLayer::test_modify_cell_out_of_bounds
+PASSED tests/test_space.py::TestPropertyLayer::test_modify_cell_ufunc
+PASSED tests/test_space.py::TestPropertyLayer::test_modify_cells_invalid_operation
+PASSED tests/test_space.py::TestPropertyLayer::test_modify_cells_lambda
+PASSED tests/test_space.py::TestPropertyLayer::test_modify_cells_ufunc
+PASSED tests/test_space.py::TestPropertyLayer::test_select_cells_complex_condition
+PASSED tests/test_space.py::TestPropertyLayer::test_set_cell
+PASSED tests/test_space.py::TestPropertyLayer::test_set_cell_out_of_bounds
+PASSED tests/test_space.py::TestPropertyLayer::test_set_cells_no_condition
+PASSED tests/test_space.py::TestPropertyLayer::test_set_cells_with_condition
+PASSED tests/test_space.py::TestPropertyLayer::test_set_cells_with_numpy_ufunc
+PASSED tests/test_space.py::TestPropertyLayer::test_set_cells_with_random_condition
+PASSED tests/test_space.py::TestSingleGrid::test_agent_positions
+PASSED tests/test_space.py::TestSingleGrid::test_agents_property
+PASSED tests/test_space.py::TestSingleGrid::test_distance_squared
+PASSED tests/test_space.py::TestSingleGrid::test_empty_cells
+PASSED tests/test_space.py::TestSingleGrid::test_empty_mask_consistency
+PASSED tests/test_space.py::TestSingleGrid::test_iter_cell_list_contents
+PASSED tests/test_space.py::TestSingleGrid::test_move_agent_closest_selection
+PASSED tests/test_space.py::TestSingleGrid::test_move_agent_closest_selection_multiple
+PASSED tests/test_space.py::TestSingleGrid::test_move_agent_invalid_selection
+PASSED tests/test_space.py::TestSingleGrid::test_move_agent_random_selection
+PASSED tests/test_space.py::TestSingleGrid::test_remove_agent
+PASSED tests/test_space.py::TestSingleGridTorus::test_distance_squared_torus
+PASSED tests/test_space.py::TestSingleGridTorus::test_move_agent_closest_selection
+PASSED tests/test_space.py::TestSingleGridTorus::test_move_agent_empty_list
+PASSED tests/test_space.py::TestSingleGridTorus::test_move_agent_empty_list_error
+PASSED tests/test_space.py::TestSingleGridTorus::test_move_agent_empty_list_warning
+PASSED tests/test_space.py::TestSingleGridTorus::test_move_agent_invalid_selection
+PASSED tests/test_space.py::TestSingleGridTorus::test_move_agent_random_selection
+PASSED tests/test_space.py::TestSingleGridWithPropertyGrid::test_add_existing_property_layer
+PASSED tests/test_space.py::TestSingleGridWithPropertyGrid::test_add_property_layer
+PASSED tests/test_space.py::TestSingleGridWithPropertyGrid::test_add_property_layer_mismatched_dimensions
+PASSED tests/test_space.py::TestSingleGridWithPropertyGrid::test_get_empty_mask
+PASSED tests/test_space.py::TestSingleGridWithPropertyGrid::test_get_empty_mask_with_agent
+PASSED tests/test_space.py::TestSingleGridWithPropertyGrid::test_get_neighborhood_mask
+PASSED tests/test_space.py::TestSingleGridWithPropertyGrid::test_invalid_property_name_in_conditions
+PASSED tests/test_space.py::TestSingleGridWithPropertyGrid::test_move_agent_no_eligible_cells
+PASSED tests/test_space.py::TestSingleGridWithPropertyGrid::test_move_agent_to_cell_by_properties
+PASSED tests/test_space.py::TestSingleGridWithPropertyGrid::test_move_agent_to_cell_by_properties_with_empty_mask
+PASSED tests/test_space.py::TestSingleGridWithPropertyGrid::test_move_agent_to_cell_by_properties_with_neighborhood_mask
+PASSED tests/test_space.py::TestSingleGridWithPropertyGrid::test_move_agent_to_extreme_value_cell
+PASSED tests/test_space.py::TestSingleGridWithPropertyGrid::test_property_layer_coordinates
+PASSED tests/test_space.py::TestSingleGridWithPropertyGrid::test_remove_nonexistent_property_layer
+PASSED tests/test_space.py::TestSingleGridWithPropertyGrid::test_remove_property_layer
+PASSED tests/test_space.py::TestSingleGridWithPropertyGrid::test_select_cells_by_properties
+PASSED tests/test_space.py::TestSingleGridWithPropertyGrid::test_select_cells_by_properties_return_mask
+PASSED tests/test_space.py::TestSingleGridWithPropertyGrid::test_select_cells_by_properties_with_empty_mask
+PASSED tests/test_space.py::TestSingleGridWithPropertyGrid::test_select_cells_by_properties_with_neighborhood_mask
+PASSED tests/test_space.py::TestSingleGridWithPropertyGrid::test_select_cells_multiple_extreme_values
+PASSED tests/test_space.py::TestSingleGridWithPropertyGrid::test_select_cells_only_empty
+PASSED tests/test_space.py::TestSingleGridWithPropertyGrid::test_select_cells_only_empty_with_conditions
+PASSED tests/test_space.py::TestSingleGridWithPropertyGrid::test_select_extreme_value_cells
+PASSED tests/test_space.py::TestSingleGridWithPropertyGrid::test_select_extreme_value_cells_return_mask
+PASSED tests/test_space.py::TestSingleNetworkGrid::test_agent_positions
+PASSED tests/test_space.py::TestSingleNetworkGrid::test_agents_property
+PASSED tests/test_space.py::TestSingleNetworkGrid::test_get_all_cell_contents
+PASSED tests/test_space.py::TestSingleNetworkGrid::test_get_cell_list_contents
+PASSED tests/test_space.py::TestSingleNetworkGrid::test_get_neighborhood
+PASSED tests/test_space.py::TestSingleNetworkGrid::test_get_neighbors
+PASSED tests/test_space.py::TestSingleNetworkGrid::test_is_cell_empty
+PASSED tests/test_space.py::TestSingleNetworkGrid::test_move_agent
+PASSED tests/test_space.py::TestSingleNetworkGrid::test_remove_agent
+PASSED tests/test_space.py::TestMultipleNetworkGrid::test_agent_positions
+PASSED tests/test_space.py::TestMultipleNetworkGrid::test_get_all_cell_contents
+PASSED tests/test_space.py::TestMultipleNetworkGrid::test_get_cell_list_contents
+PASSED tests/test_space.py::TestMultipleNetworkGrid::test_get_neighbors
+PASSED tests/test_space.py::TestMultipleNetworkGrid::test_is_cell_empty
+PASSED tests/test_space.py::TestMultipleNetworkGrid::test_move_agent
+SKIPPED [1] tests/test_space.py: a perf test will slow down the CI
+231 passed, 1 skipped, 1186 warnings in 8.55s
+Updated 1 path from 012926ba
+   Updating https://github.com/radinshayanfar/SWE-bench.git (ec4a42631acca692e56b168268d54296aa52ed24)
+    Updated https://github.com/radinshayanfar/SWE-bench.git (ec4a42631acca692e56b168268d54296aa52ed24)
+   Building swebench @ git+https://github.com/radinshayanfar/SWE-bench.git@ec4a42631acca692e56b168268d54296aa52ed24
+Downloading pyarrow (47.8MiB)
+Downloading numpy (15.9MiB)
+Downloading pandas (10.5MiB)
+Downloading virtualenv (5.1MiB)
+Downloading hf-xet (4.3MiB)
+Downloading aiohttp (1.7MiB)
+Downloading chardet (1.4MiB)
+Downloading pygments (1.2MiB)
+      Built swebench @ git+https://github.com/radinshayanfar/SWE-bench.git@ec4a42631acca692e56b168268d54296aa52ed24
+ Downloading aiohttp
+ Downloading chardet
+ Downloading pygments
+ Downloading hf-xet
+ Downloading virtualenv
+ Downloading pandas
+ Downloading numpy
+ Downloading pyarrow
+Installed 73 packages in 117ms
+FeatBench results starts here
+PASSED
+FeatBench results ends here

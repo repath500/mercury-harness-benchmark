@@ -1,0 +1,113 @@
+diff --git a/dspy/predict/predict.py b/dspy/predict/predict.py
+index 9f78ca804..afc7293ef 100644
+--- a/dspy/predict/predict.py
++++ b/dspy/predict/predict.py
+@@ -108,6 +108,19 @@ class Predict(Module, Parameter):
+         if (temperature is None or temperature <= 0.15) and num_generations > 1:
+             config["temperature"] = 0.7
+ 
++        # If the user passes a `prediction` field in the format of OpenAI's predicted outputs feature
++        # (https://platform.openai.com/docs/guides/predicted-outputs), move it to the LM config so it's
++        # forwarded to the LM call as a parameter instead of being treated as regular input data. Values
++        # that don't follow this format are left untouched to avoid clashing with legit input fields that
++        # happen to be named `prediction`.
++        if (
++            "prediction" in kwargs
++            and isinstance(kwargs["prediction"], dict)
++            and kwargs["prediction"].get("type") == "content"
++            and "content" in kwargs["prediction"]
++        ):
++            config["prediction"] = kwargs.pop("prediction")
++
+         if not all(k in kwargs for k in signature.input_fields):
+             present = [k for k in signature.input_fields if k in kwargs]
+             missing = [k for k in signature.input_fields if k not in kwargs]
+diff --git a/tests/predict/test_predict.py b/tests/predict/test_predict.py
+index ba0c47820..61c8d65ff 100644
+--- a/tests/predict/test_predict.py
++++ b/tests/predict/test_predict.py
+@@ -572,3 +572,84 @@ async def test_async_predict():
+     dspy.settings.configure(lm=DummyLM([{"answer": "Paris"}]))
+     result = await program.acall(question="What is the capital of France?")
+     assert result.answer == "Paris"
++
++
++class PredictionSpyLM(dspy.LM):
++    def __init__(self, *args, **kwargs):
++        super().__init__(*args, **kwargs)
++        self.calls = []
++
++    def __call__(self, prompt=None, messages=None, **kwargs):
++        self.calls.append({"prompt": prompt, "messages": messages, "kwargs": kwargs})
++        return ["[[ ## answer ## ]]\n100%!"]
++
++    async def acall(self, prompt=None, messages=None, **kwargs):
++        return self.__call__(prompt=prompt, messages=messages, **kwargs)
++
++
++def test_valid_prediction_moved_to_lm_config():
++    program = Predict("question -> answer")
++    lm = PredictionSpyLM("dummy_model")
++    dspy.settings.configure(lm=lm)
++
++    prediction = {"type": "content", "content": "The capital of France is Paris."}
++    result = program(question="What is the capital of France?", prediction=prediction)
++
++    assert result.answer == "100%!"
++    assert len(lm.calls) == 1
++    # The predicted output is forwarded to the LM call as a parameter...
++    assert lm.calls[0]["kwargs"]["prediction"] == prediction
++    # ...and no longer treated as regular input data.
++    assert all("The capital of France is Paris." not in message["content"] for message in lm.calls[0]["messages"])
++
++
++def test_prediction_field_with_other_config():
++    program = Predict("question -> answer")
++    lm = PredictionSpyLM("dummy_model")
++    dspy.settings.configure(lm=lm)
++
++    prediction = {"type": "content", "content": "The capital of France is Paris."}
++    program(question="What is the capital of France?", prediction=prediction, config={"temperature": 0.5})
++
++    assert lm.calls[0]["kwargs"]["prediction"] == prediction
++    assert lm.calls[0]["kwargs"]["temperature"] == 0.5
++
++
++@pytest.mark.asyncio
++async def test_valid_prediction_moved_to_lm_config_async():
++    program = Predict("question -> answer")
++    lm = PredictionSpyLM("dummy_model")
++    dspy.settings.configure(lm=lm)
++
++    prediction = {"type": "content", "content": "The capital of France is Paris."}
++    await program.acall(question="What is the capital of France?", prediction=prediction)
++
++    assert lm.calls[0]["kwargs"]["prediction"] == prediction
++
++
++@pytest.mark.parametrize(
++    ("prediction", "expected_in_user_message"),
++    [
++        ("The capital of France is Paris.", "The capital of France is Paris."),
++        ({"type": "unsupported_type", "content": "The capital of France is Paris."}, '"unsupported_type"'),
++        ({"type": "content"}, '{"type": "content"}'),
++    ],
++)
++def test_malformed_prediction_left_as_input_data(prediction, expected_in_user_message):
++    class PredictionSignature(dspy.Signature):
++        """Answer the question."""
++
++        question: str = dspy.InputField()
++        prediction = dspy.InputField()
++        answer: str = dspy.OutputField()
++
++    program = Predict(PredictionSignature)
++    lm = PredictionSpyLM("dummy_model")
++    dspy.settings.configure(lm=lm)
++
++    program(question="What is the capital of France?", prediction=prediction)
++
++    assert len(lm.calls) == 1
++    # Values that don't follow the predicted outputs format are regular inputs, not LM parameters.
++    assert "prediction" not in lm.calls[0]["kwargs"]
++    assert expected_in_user_message in lm.calls[0]["messages"][-1]["content"]

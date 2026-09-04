@@ -1,0 +1,36 @@
+diff --git a/dspy/primitives/tool.py b/dspy/primitives/tool.py
+index 94817397e..64e841fec 100644
+--- a/dspy/primitives/tool.py
++++ b/dspy/primitives/tool.py
+@@ -94,6 +94,9 @@ class Tool:
+         provided function. In order to make the inference work, the function must have valid type hints.
+         """
+         annotations_func = func if inspect.isfunction(func) or inspect.ismethod(func) else func.__call__
++        self._accepts_var_keyword = any(
++            param.kind == inspect.Parameter.VAR_KEYWORD for param in inspect.signature(annotations_func).parameters.values()
++        )
+         name = getattr(func, "__name__", type(func).__name__)
+         desc = getattr(func, "__doc__", None) or getattr(annotations_func, "__doc__", "")
+         args = {}
+@@ -107,6 +110,12 @@ class Tool:
+         hints = {param_name: available_hints.get(param_name, Any) for param_name in sig.parameters.keys()}
+         default_values = {param_name: sig.parameters[param_name].default for param_name in sig.parameters.keys()}
+ 
++        # Skip VAR_KEYWORD (**kwargs) parameters, as they don't represent a concrete arg.
++        for k, v in list(hints.items()):
++            if sig.parameters[k].kind == inspect.Parameter.VAR_KEYWORD:
++                hints.pop(k)
++                default_values.pop(k)
++
+         # Process each argument's type to generate its JSON schema.
+         for k, v in hints.items():
+             arg_types[k] = v
+@@ -147,6 +156,8 @@ class Tool:
+     def __call__(self, **kwargs):
+         for k, v in kwargs.items():
+             if k not in self.args:
++                if self._accepts_var_keyword:
++                    continue
+                 raise ValueError(f"Arg {k} is not in the tool's args.")
+             try:
+                 instance = v.model_dump() if hasattr(v, "model_dump") else v

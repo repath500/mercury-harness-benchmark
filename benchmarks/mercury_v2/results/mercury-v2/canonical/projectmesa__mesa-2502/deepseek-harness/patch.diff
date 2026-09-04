@@ -1,0 +1,60 @@
+diff --git a/mesa/experimental/cell_space/cell_collection.py b/mesa/experimental/cell_space/cell_collection.py
+index ead67021..de4d0754 100644
+--- a/mesa/experimental/cell_space/cell_collection.py
++++ b/mesa/experimental/cell_space/cell_collection.py
+@@ -49,7 +49,9 @@ class CellCollection(Generic[T]):
+             self._cells = {cell: cell.agents for cell in cells}
+ 
+         #
+-        self._capacity: int = next(iter(self._cells.keys())).capacity
++        self._capacity: int | None = (
++            next(iter(self._cells.keys())).capacity if len(self._cells) else None
++        )
+ 
+         if random is None:
+             warnings.warn(
+diff --git a/tests/test_cell_space.py b/tests/test_cell_space.py
+index add5f6f8..a50cc3e5 100644
+--- a/tests/test_cell_space.py
++++ b/tests/test_cell_space.py
+@@ -583,6 +583,40 @@ def test_cell_collection():
+     assert len(cells) == len(collection)
+ 
+ 
++def test_empty_cell_collection():
++    """Test that empty CellCollections work without errors."""
++    rng = random.Random()
++
++    # direct initialization with an empty iterable
++    empty = CellCollection([], random=rng)
++    assert len(empty) == 0
++    assert list(empty) == []
++    assert empty.cells == []
++    assert list(empty.agents) == []
++    assert empty._capacity is None
++
++    # direct initialization with an empty mapping
++    empty = CellCollection({}, random=rng)
++    assert len(empty) == 0
++    assert empty._capacity is None
++
++    # select with a filter that matches no cells returns an empty collection
++    collection = CellCollection(
++        [Cell((i,), capacity=5, random=rng) for i in range(10)], random=rng
++    )
++    empty = collection.select(lambda cell: False)
++    assert len(empty) == 0
++    assert empty._capacity is None
++
++    # methods on an empty collection don't raise
++    assert list(empty.select()) == []
++    assert len(empty.select(at_most=0.5)) == 0
++    assert list(empty.select(lambda cell: True)) == []
++
++    # capacity of a non-empty collection is unchanged
++    assert collection._capacity == 5
++
++
+ ### PropertyLayer tests
+ def test_property_layer_integration():
+     """Test integration of PropertyLayer with DiscrateSpace and Cell."""

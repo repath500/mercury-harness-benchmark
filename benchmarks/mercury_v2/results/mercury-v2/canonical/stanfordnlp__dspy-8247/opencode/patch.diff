@@ -1,0 +1,85 @@
+diff --git a/dspy/predict/predict.py b/dspy/predict/predict.py
+index 9f78ca804..46a716e1d 100644
+--- a/dspy/predict/predict.py
++++ b/dspy/predict/predict.py
+@@ -108,6 +108,14 @@ class Predict(Module, Parameter):
+         if (temperature is None or temperature <= 0.15) and num_generations > 1:
+             config["temperature"] = 0.7
+ 
++        if "prediction" in kwargs:
++            if (
++                isinstance(kwargs["prediction"], dict)
++                and kwargs["prediction"].get("type") == "content"
++                and "content" in kwargs["prediction"]
++            ):
++                config["prediction"] = kwargs.pop("prediction")
++
+         if not all(k in kwargs for k in signature.input_fields):
+             present = [k for k in signature.input_fields if k in kwargs]
+             missing = [k for k in signature.input_fields if k not in kwargs]
+diff --git a/tests/predict/test_predict.py b/tests/predict/test_predict.py
+index ba0c47820..5d63f6329 100644
+--- a/tests/predict/test_predict.py
++++ b/tests/predict/test_predict.py
+@@ -572,3 +572,61 @@ async def test_async_predict():
+     dspy.settings.configure(lm=DummyLM([{"answer": "Paris"}]))
+     result = await program.acall(question="What is the capital of France?")
+     assert result.answer == "Paris"
++
++
++class _SpyLM(dspy.LM):
++    def __init__(self, return_json=False, **kwargs):
++        super().__init__("dummy_model", **kwargs)
++        self.calls = []
++        self.return_json = return_json
++
++    def __call__(self, prompt=None, messages=None, **kwargs):
++        self.calls.append({"prompt": prompt, "messages": messages, "kwargs": kwargs})
++        if self.return_json:
++            return ["{'answer':'100%!'}"]
++        return ["[[ ## answer ## ]]\n100%!"]
++
++
++@pytest.mark.parametrize("adapter_type", ["chat", "json"])
++def test_openai_predicted_outputs(adapter_type):
++    program = Predict("question -> answer")
++
++    if adapter_type == "chat":
++        lm = _SpyLM()
++        dspy.settings.configure(adapter=dspy.ChatAdapter(), lm=lm)
++    else:
++        lm = _SpyLM(return_json=True)
++        dspy.settings.configure(adapter=dspy.JSONAdapter(), lm=lm)
++
++    prediction = {"type": "content", "content": "The capital of France is Paris."}
++    result = program(question="What is the capital of France?", prediction=prediction)
++    assert result.answer == "100%!"
++
++    assert len(lm.calls) == 1
++    # The prediction should be passed to the LM as a parameter, not as an input field.
++    assert lm.calls[0]["kwargs"]["prediction"] == prediction
++    assert "What is the capital of France?" in lm.calls[0]["messages"][-1]["content"]
++    assert "The capital of France is Paris." not in str(lm.calls[0]["messages"])
++
++
++def test_regular_input_field_named_prediction_is_not_moved_to_lm_kwargs():
++    class PredictionSignature(dspy.Signature):
++        """Answer the question."""
++
++        question: str = dspy.InputField()
++        prediction: str = dspy.InputField()
++        answer: str = dspy.OutputField()
++
++    program = Predict(PredictionSignature)
++
++    lm = _SpyLM()
++    dspy.settings.configure(adapter=dspy.ChatAdapter(), lm=lm)
++
++    result = program(question="What is the capital of France?", prediction="Someone said it is Rome.")
++    assert result.answer == "100%!"
++
++    assert len(lm.calls) == 1
++    # A regular input field named `prediction` that doesn't follow the predicted outputs format should be
++    # treated as a normal input field.
++    assert "prediction" not in lm.calls[0]["kwargs"]
++    assert "Someone said it is Rome." in lm.calls[0]["messages"][-1]["content"]

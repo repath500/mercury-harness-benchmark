@@ -1,0 +1,267 @@
+diff --git a/dspy/adapters/types/image.py b/dspy/adapters/types/image.py
+index 904b85ffe..56f4521c7 100644
+--- a/dspy/adapters/types/image.py
++++ b/dspy/adapters/types/image.py
+@@ -1,8 +1,9 @@
+ import base64
+ import io
++import mimetypes
+ import os
+ from typing import Any, Dict, List, Union
+-from urllib.parse import urlparse
++from urllib.parse import unquote, urlparse
+ import re
+ 
+ import pydantic
+@@ -79,14 +80,14 @@ def is_url(string: str) -> bool:
+ 
+ def encode_image(image: Union[str, bytes, "PILImage.Image", dict], download_images: bool = False) -> str:
+     """
+-    Encode an image to a base64 data URI.
++    Encode a media file or image to a base64 data URI.
+ 
+     Args:
+-        image: The image to encode. Can be a PIL Image, file path, URL, or data URI.
+-        download_images: Whether to download images from URLs.
++        image: The media to encode. Can be a PIL Image, file path, URL, or data URI.
++        download_images: Whether to download media from URLs.
+ 
+     Returns:
+-        str: The data URI of the image or the URL if download_images is False.
++        str: The data URI of the media or the URL if download_images is False.
+ 
+     Raises:
+         ValueError: If the image type is not supported.
+@@ -95,7 +96,7 @@ def encode_image(image: Union[str, bytes, "PILImage.Image", dict], download_imag
+         # NOTE: Not doing other validation for now
+         return image["url"]
+     elif isinstance(image, str):
+-        if image.startswith("data:image/"):
++        if image.startswith("data:"):
+             # Already a data URI
+             return image
+         elif os.path.isfile(image):
+@@ -110,8 +111,8 @@ def encode_image(image: Union[str, bytes, "PILImage.Image", dict], download_imag
+                 return image
+         else:
+             # Unsupported string format
+-            print(f"Unsupported image string: {image}")
+-            raise ValueError(f"Unsupported image string: {image}")
++            print(f"Unsupported media reference: {image}")
++            raise ValueError(f"Unsupported media reference: {image}")
+     elif PIL_AVAILABLE and isinstance(image, PILImage.Image):
+         # PIL Image
+         return _encode_pil_image(image)
+@@ -129,48 +130,84 @@ def encode_image(image: Union[str, bytes, "PILImage.Image", dict], download_imag
+ 
+ 
+ def _encode_image_from_file(file_path: str) -> str:
+-    """Encode an image from a file path to a base64 data URI."""
++    """Encode media from a file path to a base64 data URI."""
+     with open(file_path, "rb") as image_file:
+         image_data = image_file.read()
+-    file_extension = _get_file_extension(file_path)
++    media_type = _get_mime_type(file_path)
+     encoded_image = base64.b64encode(image_data).decode("utf-8")
+-    return f"data:image/{file_extension};base64,{encoded_image}"
++    return f"data:{media_type};base64,{encoded_image}"
+ 
+ 
+ def _encode_image_from_url(image_url: str) -> str:
+-    """Encode an image from a URL to a base64 data URI."""
++    """Encode media from a URL to a base64 data URI."""
+     response = requests.get(image_url)
+     response.raise_for_status()
+-    content_type = response.headers.get("Content-Type", "")
+-    if content_type.startswith("image/"):
+-        file_extension = content_type.split("/")[-1]
+-    else:
+-        # Fallback to file extension from URL or default to 'png'
+-        file_extension = _get_file_extension(image_url) or "png"
++    media_type = _get_mime_type_from_content_type(response.headers.get("Content-Type", ""))
++    if not media_type:
++        media_type = _get_mime_type(image_url, require_mime=True)
+     encoded_image = base64.b64encode(response.content).decode("utf-8")
+-    return f"data:image/{file_extension};base64,{encoded_image}"
++    return f"data:{media_type};base64,{encoded_image}"
+ 
+ def _encode_pil_image(image: 'PILImage') -> str:
+     """Encode a PIL Image object to a base64 data URI."""
+     buffered = io.BytesIO()
+-    file_extension = (image.format or "PNG").lower()
++    file_extension = (image.format or "PNG").upper()
+     image.save(buffered, format=file_extension)
+     encoded_image = base64.b64encode(buffered.getvalue()).decode("utf-8")
+-    return f"data:image/{file_extension};base64,{encoded_image}"
++    media_type = _get_mime_type_from_bytes(buffered.getvalue())
++    if not media_type:
++        media_type = _get_mime_type(f"image.{file_extension.lower()}", require_mime=True)
++    return f"data:{media_type};base64,{encoded_image}"
+ 
+ 
+ def _get_file_extension(path_or_url: str) -> str:
+     """Extract the file extension from a file path or URL."""
+-    extension = os.path.splitext(urlparse(path_or_url).path)[1].lstrip(".").lower()
+-    return extension or "png"  # Default to 'png' if no extension found
++    return os.path.splitext(urlparse(path_or_url).path)[1].lstrip(".").lower()
++
++
++def _get_mime_type(path_or_url: str, require_mime: bool = False) -> str:
++    """Determine a MIME type from a file path or URL, preferring explicit extensions."""
++    extension = _get_file_extension(path_or_url)
++    media_type, _ = mimetypes.guess_type(f"file.{extension}" if extension else unquote(urlparse(path_or_url).path))
++    if media_type:
++        return media_type
++    if not require_mime:
++        return "application/octet-stream"
++    raise ValueError(f"Could not determine MIME type for: {path_or_url}")
++
++
++def _get_mime_type_from_bytes(data: bytes) -> str:
++    """Detect MIME types for in-memory image formats where PIL may not report one."""
++    signatures = (
++        (b"\x89PNG\r\n\x1a\n", "image/png"),
++        (b"\xff\xd8\xff", "image/jpeg"),
++        (b"GIF87a", "image/gif"),
++        (b"GIF89a", "image/gif"),
++        (b"BM", "image/bmp"),
++        (b"II*\x00", "image/tiff"),
++        (b"MM\x00*", "image/tiff"),
++    )
++    for signature, media_type in signatures:
++        if data.startswith(signature):
++            return media_type
++    if data.startswith(b"RIFF") and data[8:12] == b"WEBP":
++        return "image/webp"
++    return ""
++
+ 
++def _get_mime_type_from_content_type(content_type: str) -> str:
++    """Extract a valid MIME type from an HTTP Content-Type header."""
++    media_type = content_type.split(";", 1)[0].strip().lower()
++    if "/" in media_type:
++        return media_type
++    return ""
+ 
+ def is_image(obj) -> bool:
+-    """Check if the object is an image or a valid image reference."""
++    """Check if the object is a media file reference or an image."""
+     if PIL_AVAILABLE and isinstance(obj, PILImage.Image):
+         return True
+     if isinstance(obj, str):
+-        if obj.startswith("data:image/"):
++        if obj.startswith("data:"):
+             return True
+         elif os.path.isfile(obj):
+             return True
+@@ -218,9 +255,15 @@ def expand_image_tags(text: str) -> Union[str, List[Dict[str, Any]]]:
+         if prefix:
+             final_list.append({"type": "text", "text": prefix})
+             
+-        # Add the image
+-        image_url = match.group(1)
+-        final_list.append({"type": "image_url", "image_url": {"url": image_url}})
++        # Add the media item
++        media_url = match.group(1)
++        is_image_url = media_url.startswith("data:image/") or (
++            is_url(media_url) and (_get_mime_type(media_url) or "").startswith("image/")
++        )
++        content_type = "image_url" if is_image_url else "file"
++        content_key = "image_url" if content_type == "image_url" else "file"
++        content_value = {"url": media_url} if content_type == "image_url" else {"file_data": media_url}
++        final_list.append({"type": content_type, content_key: content_value})
+         
+         # Update remaining text
+         remaining_text = remaining_text[match.end():].strip()
+diff --git a/tests/signatures/test_adapter_image.py b/tests/signatures/test_adapter_image.py
+index a0d4a60aa..34c3f4833 100644
+--- a/tests/signatures/test_adapter_image.py
++++ b/tests/signatures/test_adapter_image.py
+@@ -4,11 +4,12 @@ import pytest
+ from PIL import Image as PILImage
+ import requests
+ from io import BytesIO
++from unittest.mock import Mock, patch
+ 
+ import dspy
+ from dspy import Predict
+ from dspy.utils.dummies import DummyLM
+-from dspy.adapters.types.image import encode_image
++from dspy.adapters.types.image import encode_image, is_image, try_expand_image_tags
+ import tempfile
+ import pydantic
+ 
+@@ -32,6 +33,73 @@ def sample_url():
+ def sample_dspy_image_no_download():
+     return dspy.Image.from_url("https://images.dog.ceo/breeds/dane-great/n02109047_8912.jpg", download=False)
+ 
++def test_encode_image_supports_generic_files(tmp_path):
++    pdf_path = tmp_path / "document.pdf"
++    pdf_path.write_bytes(b"%PDF-1.4")
++    video_path = tmp_path / "video.mov"
++    video_path.write_bytes(b"MOV")
++    unknown_path = tmp_path / "unknown"
++    unknown_path.write_bytes(b"data")
++
++    assert encode_image(str(pdf_path)).startswith("data:application/pdf;base64,")
++    assert encode_image(str(video_path)).startswith("data:video/quicktime;base64,")
++    assert encode_image(str(unknown_path)).startswith("data:application/octet-stream;base64,")
++    assert is_image(str(pdf_path))
++    assert is_image("data:application/pdf;base64,JVBERi0=")
++
++
++def test_encode_image_pil_uses_standard_mime(tmp_path):
++    png = PILImage.new("RGB", (1, 1), "red")
++    png_path = tmp_path / "pixel.png"
++    png.save(png_path)
++    jpeg_path = tmp_path / "pixel.jpg"
++    PILImage.new("RGB", (1, 1), "blue").save(jpeg_path, format="JPEG")
++    jpeg = PILImage.open(jpeg_path)
++
++    assert encode_image(png).startswith("data:image/png;base64,")
++    assert encode_image(jpeg).startswith("data:image/jpeg;base64,")
++
++
++def test_encode_image_url_uses_content_type_with_extension_fallback():
++    response = Mock(content=b"%PDF-1.4")
++    response.headers.get.return_value = "application/pdf"
++    with patch("dspy.adapters.types.image.requests.get", return_value=response):
++        assert encode_image("https://example.com/download", download_images=True) == (
++            "data:application/pdf;base64,JVBERi0xLjQ="
++        )
++
++    html_response = Mock(content=b"<html></html>")
++    html_response.headers.get.return_value = "text/html; charset=utf-8"
++    with patch("dspy.adapters.types.image.requests.get", return_value=html_response):
++        assert encode_image("https://example.com/file.pdf", download_images=True).startswith(
++            "data:text/html;base64,"
++        )
++
++
++def test_encode_image_url_requires_known_mime_without_content_type():
++    response = Mock(content=b"data", headers={})
++    with patch("dspy.adapters.types.image.requests.get", return_value=response):
++        with pytest.raises(ValueError, match="Could not determine MIME type"):
++            encode_image("https://example.com/no-extension", download_images=True)
++
++
++def test_expand_image_tags_supports_generic_data_uris():
++    expanded = try_expand_image_tags([{"role": "user", "content": (
++        '<DSPY_IMAGE_START>data:image/png;base64,AAAA<DSPY_IMAGE_END>'
++        ' and '
++        '<DSPY_IMAGE_START>data:application/pdf;base64,JVBERi0=<DSPY_IMAGE_END>'
++    )}])
++    assert expanded[0]["content"] == [
++        {"type": "image_url", "image_url": {"url": "data:image/png;base64,AAAA"}},
++        {"type": "text", "text": "and"},
++        {"type": "file", "file": {"file_data": "data:application/pdf;base64,JVBERi0="}},
++    ]
++
++
++def test_expand_image_tags_accepts_any_data_uri_before_encoding():
++    assert is_image("data:video/mp4;base64,AAAA")
++
++
+ def count_messages_with_image_url_pattern(messages):
+     pattern = {
+         'type': 'image_url',

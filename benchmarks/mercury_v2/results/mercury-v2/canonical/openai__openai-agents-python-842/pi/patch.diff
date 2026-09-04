@@ -1,0 +1,148 @@
+diff --git a/docs/models/index.md b/docs/models/index.md
+index 1c89d778..48a77b0f 100644
+--- a/docs/models/index.md
++++ b/docs/models/index.md
+@@ -93,6 +93,36 @@ english_agent = Agent(
+ )
+ ```
+ 
++### Passing provider-specific parameters
++
++Different model providers sometimes have unique parameters that are not covered by the standard
++`ModelSettings` fields. `ModelSettings` accepts an `extra_args` dictionary of arbitrary keyword
++arguments that are passed straight through to the underlying model API call, so you can use
++provider-specific features without waiting for official support.
++
++```python
++from agents import Agent, ModelSettings
++
++english_agent = Agent(
++    name="English agent",
++    instructions="You only speak English",
++    model="gpt-4o",
++    model_settings=ModelSettings(
++        temperature=0.1,
++        extra_args={"some_provider_specific_arg": True},
++    ),
++)
++```
++
++!!! note
++
++    Not all model providers support all parameters, so passing unsupported parameters may cause
++    errors. Please check the API documentation for the specific model and provider you are
++    using. Any `None` values in `extra_args` are filtered out before the request is made, and
++    when model settings are merged (for example, agent settings combined with `RunConfig`
++    settings), the `extra_args` dictionaries are merged together with the more specific settings
++    taking precedence.
++
+ ## Common issues with using other LLM providers
+ 
+ ### Tracing client error 401
+diff --git a/src/agents/extensions/models/litellm_model.py b/src/agents/extensions/models/litellm_model.py
+index 7cf7a2de..993d9470 100644
+--- a/src/agents/extensions/models/litellm_model.py
++++ b/src/agents/extensions/models/litellm_model.py
+@@ -283,6 +283,10 @@ class LitellmModel(Model):
+             extra_kwargs["metadata"] = model_settings.metadata
+         if model_settings.extra_body and isinstance(model_settings.extra_body, dict):
+             extra_kwargs.update(model_settings.extra_body)
++        if model_settings.extra_args and isinstance(model_settings.extra_args, dict):
++            extra_kwargs.update(
++                {k: v for k, v in model_settings.extra_args.items() if v is not None}
++            )
+ 
+         ret = await litellm.acompletion(
+             model=self.model,
+diff --git a/src/agents/model_settings.py b/src/agents/model_settings.py
+index 7b016c98..245af5c7 100644
+--- a/src/agents/model_settings.py
++++ b/src/agents/model_settings.py
+@@ -73,6 +73,20 @@ class ModelSettings:
+     """Additional headers to provide with the request.
+     Defaults to None if not provided."""
+ 
++    extra_args: dict[str, Any] | None = None
++    """Arbitrary keyword arguments to pass to the underlying model API call. This is an escape
++    hatch that you can use to pass provider-specific parameters, even if they are not explicitly
++    supported by this class.
++
++    ```python
++    settings = ModelSettings(extra_args={"some_provider_arg": True})
++    ```
++
++    Note: not all model providers support all parameters, so using unsupported parameters may
++    cause errors. Please check the API documentation for the specific model and provider you
++    are using. Any `None` values are filtered out before the request is made.
++    """
++
+     def resolve(self, override: ModelSettings | None) -> ModelSettings:
+         """Produce a new ModelSettings by overlaying any non-None values from the
+         override on top of this instance."""
+@@ -84,6 +98,8 @@ class ModelSettings:
+             for field in fields(self)
+             if getattr(override, field.name) is not None
+         }
++        if self.extra_args and override.extra_args:
++            changes["extra_args"] = {**self.extra_args, **override.extra_args}
+         return replace(self, **changes)
+ 
+     def to_json_dict(self) -> dict[str, Any]:
+diff --git a/src/agents/models/openai_chatcompletions.py b/src/agents/models/openai_chatcompletions.py
+index 6b4045d2..ec3ffa6a 100644
+--- a/src/agents/models/openai_chatcompletions.py
++++ b/src/agents/models/openai_chatcompletions.py
+@@ -43,6 +43,10 @@ class OpenAIChatCompletionsModel(Model):
+     def _non_null_or_not_given(self, value: Any) -> Any:
+         return value if value is not None else NOT_GIVEN
+ 
++    def _remove_not_given(self, value: dict[str, Any]) -> dict[str, Any]:
++        """Filter out NOT_GIVEN and None values to keep the API request clean."""
++        return {k: v for k, v in value.items() if v is not NOT_GIVEN and v is not None}
++
+     async def get_response(
+         self,
+         system_instructions: str | None,
+@@ -281,6 +285,7 @@ class OpenAIChatCompletionsModel(Model):
+             extra_query=model_settings.extra_query,
+             extra_body=model_settings.extra_body,
+             metadata=self._non_null_or_not_given(model_settings.metadata),
++            **self._remove_not_given(model_settings.extra_args or {}),
+         )
+ 
+         if isinstance(ret, ChatCompletion):
+diff --git a/src/agents/models/openai_responses.py b/src/agents/models/openai_responses.py
+index 86c8e69c..f7402e0e 100644
+--- a/src/agents/models/openai_responses.py
++++ b/src/agents/models/openai_responses.py
+@@ -64,6 +64,10 @@ class OpenAIResponsesModel(Model):
+     def _non_null_or_not_given(self, value: Any) -> Any:
+         return value if value is not None else NOT_GIVEN
+ 
++    def _remove_not_given(self, value: dict[str, Any]) -> dict[str, Any]:
++        """Filter out NOT_GIVEN and None values to keep the API request clean."""
++        return {k: v for k, v in value.items() if v is not NOT_GIVEN and v is not None}
++
+     async def get_response(
+         self,
+         system_instructions: str | None,
+@@ -266,6 +270,7 @@ class OpenAIResponsesModel(Model):
+             store=self._non_null_or_not_given(model_settings.store),
+             reasoning=self._non_null_or_not_given(model_settings.reasoning),
+             metadata=self._non_null_or_not_given(model_settings.metadata),
++            **self._remove_not_given(model_settings.extra_args or {}),
+         )
+ 
+     def _get_client(self) -> AsyncOpenAI:
+diff --git a/tests/model_settings/test_serialization.py b/tests/model_settings/test_serialization.py
+index d76a58d1..ab3af481 100644
+--- a/tests/model_settings/test_serialization.py
++++ b/tests/model_settings/test_serialization.py
+@@ -47,6 +47,7 @@ def test_all_fields_serialization() -> None:
+         extra_query={"foo": "bar"},
+         extra_body={"foo": "bar"},
+         extra_headers={"foo": "bar"},
++        extra_args={"foo": "bar"},
+     )
+ 
+     # Verify that every single field is set to a non-None value

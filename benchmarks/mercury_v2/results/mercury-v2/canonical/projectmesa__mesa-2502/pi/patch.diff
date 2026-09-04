@@ -1,0 +1,48 @@
+diff --git a/mesa/experimental/cell_space/cell_collection.py b/mesa/experimental/cell_space/cell_collection.py
+index ead67021..de4d0754 100644
+--- a/mesa/experimental/cell_space/cell_collection.py
++++ b/mesa/experimental/cell_space/cell_collection.py
+@@ -49,7 +49,9 @@ class CellCollection(Generic[T]):
+             self._cells = {cell: cell.agents for cell in cells}
+ 
+         #
+-        self._capacity: int = next(iter(self._cells.keys())).capacity
++        self._capacity: int | None = (
++            next(iter(self._cells.keys())).capacity if len(self._cells) else None
++        )
+ 
+         if random is None:
+             warnings.warn(
+diff --git a/tests/test_cell_space.py b/tests/test_cell_space.py
+index add5f6f8..4a64c67e 100644
+--- a/tests/test_cell_space.py
++++ b/tests/test_cell_space.py
+@@ -583,6 +583,28 @@ def test_cell_collection():
+     assert len(cells) == len(collection)
+ 
+ 
++def test_empty_cell_collection():
++    """Test that empty CellCollections work correctly (issue #2473)."""
++    rng = random.Random()
++
++    # directly create an empty collection
++    collection = CellCollection([], random=rng)
++    assert len(collection) == 0
++    assert collection._capacity is None
++
++    # create an empty collection using select
++    collection = CellCollection(
++        [Cell((i,), random=rng) for i in range(10)], random=rng
++    )
++    empty_collection = collection.select(lambda cell: False)
++    assert len(empty_collection) == 0
++    assert empty_collection._capacity is None
++
++    # chaining select on an empty collection works as well
++    assert len(empty_collection.select()) == 0
++    assert len(empty_collection.select(at_most=0.5)) == 0
++
++
+ ### PropertyLayer tests
+ def test_property_layer_integration():
+     """Test integration of PropertyLayer with DiscrateSpace and Cell."""

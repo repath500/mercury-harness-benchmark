@@ -1,0 +1,26 @@
+diff --git a/src/smolagents/local_python_executor.py b/src/smolagents/local_python_executor.py
+index 0bfa53b..67bca68 100644
+--- a/src/smolagents/local_python_executor.py
++++ b/src/smolagents/local_python_executor.py
+@@ -1495,6 +1495,7 @@ class LocalPythonExecutor(PythonExecutor):
+         self,
+         additional_authorized_imports: list[str],
+         max_print_outputs_length: int | None = None,
++        additional_functions: dict[str, Callable] | None = None,
+     ):
+         self.custom_tools = {}
+         self.state = {"__name__": "__main__"}
+@@ -1505,11 +1506,12 @@ class LocalPythonExecutor(PythonExecutor):
+         self.authorized_imports = list(set(BASE_BUILTIN_MODULES) | set(self.additional_authorized_imports))
+         # TODO: assert self.authorized imports are all installed locally
+         self.static_tools = None
++        self.additional_functions = additional_functions or {}
+ 
+     def __call__(self, code_action: str) -> tuple[Any, str, bool]:
+         output, is_final_answer = evaluate_python_code(
+             code_action,
+-            static_tools=self.static_tools,
++            static_tools={**self.static_tools, **self.additional_functions} if self.static_tools else self.additional_functions,
+             custom_tools=self.custom_tools,
+             state=self.state,
+             authorized_imports=self.authorized_imports,

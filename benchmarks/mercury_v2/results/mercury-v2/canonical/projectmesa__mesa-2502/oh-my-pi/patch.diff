@@ -1,0 +1,40 @@
+diff --git a/mesa/experimental/cell_space/cell_collection.py b/mesa/experimental/cell_space/cell_collection.py
+index ead67021..f5545c25 100644
+--- a/mesa/experimental/cell_space/cell_collection.py
++++ b/mesa/experimental/cell_space/cell_collection.py
+@@ -49,7 +49,9 @@ class CellCollection(Generic[T]):
+             self._cells = {cell: cell.agents for cell in cells}
+ 
+         #
+-        self._capacity: int = next(iter(self._cells.keys())).capacity
++        self._capacity: int | None = (
++            next(iter(self._cells.keys())).capacity if self._cells else None
++        )
+ 
+         if random is None:
+             warnings.warn(
+diff --git a/tests/test_cell_space.py b/tests/test_cell_space.py
+index add5f6f8..65051a07 100644
+--- a/tests/test_cell_space.py
++++ b/tests/test_cell_space.py
+@@ -582,6 +582,20 @@ def test_cell_collection():
+     cells = collection.select()
+     assert len(cells) == len(collection)
+ 
++    # Test empty CellCollection
++    empty_collection = CellCollection([], random=rng)
++    assert len(empty_collection) == 0
++    assert empty_collection._capacity is None
++    assert len(empty_collection.cells) == 0
++    assert len(list(empty_collection.agents)) == 0
++
++    empty_collection = collection.select(lambda cell: False)
++    assert len(empty_collection) == 0
++    assert empty_collection._capacity is None
++
++    empty_collection = empty_collection.select(at_most=0.5)
++    assert len(empty_collection) == 0
++
+ 
+ ### PropertyLayer tests
+ def test_property_layer_integration():

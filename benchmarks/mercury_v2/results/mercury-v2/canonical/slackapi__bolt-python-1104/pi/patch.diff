@@ -1,0 +1,105 @@
+diff --git a/slack_bolt/middleware/authorization/internals.py b/slack_bolt/middleware/authorization/internals.py
+index 81410195..29d65e3b 100644
+--- a/slack_bolt/middleware/authorization/internals.py
++++ b/slack_bolt/middleware/authorization/internals.py
+@@ -68,6 +68,7 @@ def _to_authorize_result(  # type: ignore
+     request_user_id: Optional[str],
+ ) -> AuthorizeResult:
+     user_id = auth_test_result.get("user_id")
++    oauth_scopes: Optional[str] = auth_test_result.headers.get("x-oauth-scopes")
+     return AuthorizeResult(
+         enterprise_id=auth_test_result.get("enterprise_id"),
+         team_id=auth_test_result.get("team_id"),
+@@ -76,4 +77,6 @@ def _to_authorize_result(  # type: ignore
+         bot_token=token if _is_bot_token(token) else None,
+         user_id=request_user_id or (user_id if not _is_bot_token(token) else None),
+         user_token=token if not _is_bot_token(token) else None,
++        bot_scopes=oauth_scopes if _is_bot_token(token) else None,
++        user_scopes=None if _is_bot_token(token) else oauth_scopes,
+     )
+diff --git a/tests/mock_web_api_server.py b/tests/mock_web_api_server.py
+index ce42ddb1..57fc85b2 100644
+--- a/tests/mock_web_api_server.py
++++ b/tests/mock_web_api_server.py
+@@ -149,6 +149,7 @@ class MockHandler(SimpleHTTPRequestHandler):
+             if self.is_valid_user_token():
+                 if path == "/auth.test":
+                     self.send_response(200)
++                    self.send_header("x-oauth-scopes", "chat:write,search:read")
+                     self.set_common_headers(len(USER_AUTH_TEST_RESPONSE))
+                     self.wfile.write(USER_AUTH_TEST_RESPONSE.encode("utf-8"))
+                     return
+@@ -156,6 +157,7 @@ class MockHandler(SimpleHTTPRequestHandler):
+             if self.is_valid_token():
+                 if path == "/auth.test":
+                     self.send_response(200)
++                    self.send_header("x-oauth-scopes", "chat:write,commands")
+                     self.set_common_headers(len(BOT_AUTH_TEST_RESPONSE))
+                     self.wfile.write(BOT_AUTH_TEST_RESPONSE.encode("utf-8"))
+                     return
+diff --git a/tests/slack_bolt/middleware/authorization/test_single_team_authorization.py b/tests/slack_bolt/middleware/authorization/test_single_team_authorization.py
+index 4cf5d960..7e3a0c11 100644
+--- a/tests/slack_bolt/middleware/authorization/test_single_team_authorization.py
++++ b/tests/slack_bolt/middleware/authorization/test_single_team_authorization.py
+@@ -1,4 +1,5 @@
+ from slack_sdk import WebClient
++from slack_sdk.web import SlackResponse
+ 
+ from slack_bolt.middleware import SingleTeamAuthorization
+ from slack_bolt.middleware.authorization.internals import _build_user_facing_authorize_error_message
+@@ -34,6 +35,29 @@ class TestSingleTeamAuthorization:
+         assert resp.status == 200
+         assert resp.body == ""
+ 
++    def test_success_pattern_with_bot_scopes(self):
++        client = WebClient(base_url=self.mock_api_server_base_url, token="xoxb-valid")
++        auth_test_result: SlackResponse = SlackResponse(
++            client=client,
++            http_verb="POST",
++            api_url="https://slack.com/api/auth.test",
++            req_args={},
++            data={},
++            headers={"x-oauth-scopes": "chat:write,commands"},
++            status_code=200,
++        )
++        authorization = SingleTeamAuthorization(auth_test_result=auth_test_result)
++        req = BoltRequest(body="payload={}", headers={})
++        req.context["client"] = client
++        resp = BoltResponse(status=404)
++
++        resp = authorization.process(req=req, resp=resp, next=next)
++
++        assert resp.status == 200
++        assert resp.body == ""
++        assert req.context.authorize_result.bot_scopes == ["chat:write", "commands"]
++        assert req.context.authorize_result.user_scopes is None
++
+     def test_failure_pattern(self):
+         authorization = SingleTeamAuthorization(auth_test_result={})
+         req = BoltRequest(body="payload={}", headers={})
+diff --git a/tests/slack_bolt_async/middleware/authorization/test_single_team_authorization.py b/tests/slack_bolt_async/middleware/authorization/test_single_team_authorization.py
+index ef1baded..8ccfc009 100644
+--- a/tests/slack_bolt_async/middleware/authorization/test_single_team_authorization.py
++++ b/tests/slack_bolt_async/middleware/authorization/test_single_team_authorization.py
+@@ -47,6 +47,21 @@ class TestSingleTeamAuthorization:
+         assert resp.status == 200
+         assert resp.body == ""
+ 
++    @pytest.mark.asyncio
++    async def test_success_pattern_with_bot_scopes(self):
++        client = AsyncWebClient(base_url=self.mock_api_server_base_url, token="xoxb-valid")
++        authorization = AsyncSingleTeamAuthorization()
++        req = AsyncBoltRequest(body="payload={}", headers={})
++        req.context["client"] = client
++        resp = BoltResponse(status=404)
++
++        resp = await authorization.async_process(req=req, resp=resp, next=next)
++
++        assert resp.status == 200
++        assert resp.body == ""
++        assert req.context.authorize_result.bot_scopes == ["chat:write", "commands"]
++        assert req.context.authorize_result.user_scopes is None
++
+     @pytest.mark.asyncio
+     async def test_failure_pattern(self):
+         authorization = AsyncSingleTeamAuthorization()

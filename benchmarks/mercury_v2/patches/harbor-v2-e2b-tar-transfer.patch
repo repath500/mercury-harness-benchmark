@@ -1,0 +1,44 @@
+diff --git a/src/harbor/environments/e2b.py b/src/harbor/environments/e2b.py
+--- a/src/harbor/environments/e2b.py
++++ b/src/harbor/environments/e2b.py
+@@ -389,31 +389,17 @@ class E2BEnvironment(BaseEnvironment):
+         if not self._sandbox:
+             raise RuntimeError("Sandbox not found. Please start the environment first.")
+ 
+-        results = await self._sandbox.files.list(source_dir)
+-
+-        for result in results:
+-            if result.type == FileType.DIR:
+-                sub_target_dir = Path(target_dir) / Path(result.path).relative_to(
+-                    Path(source_dir)
+-                )
+-                sub_target_dir.mkdir(parents=True, exist_ok=True)
+-
+-                await self.download_dir(
+-                    source_dir=result.path,
+-                    target_dir=sub_target_dir,
+-                )
+-
+-            if result.type == FileType.FILE:
+-                target_path = Path(target_dir) / Path(result.path).relative_to(
+-                    Path(source_dir)
+-                )
+-
+-                target_path.parent.mkdir(parents=True, exist_ok=True)
+-
+-                await self.download_file(
+-                    source_path=result.path,
+-                    target_path=str(target_path),
+-                )
++        # A recursive files.list/read loop is extremely slow for agent logs and
++        # can remain open indefinitely when the E2B daemon is under load. Use
++        # Harbor's tar transfer path instead: one remote command, one file read,
++        # and one local extraction. This also keeps artifact collection bounded
++        # by the existing 120-second command timeout.
++        await self._download_dir_with_exclusions_impl(
++            source_dir=source_dir,
++            target_dir=target_dir,
++            exclude=[],
++            service=None,
++        )
+

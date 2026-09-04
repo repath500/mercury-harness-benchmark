@@ -1,0 +1,171 @@
+diff --git a/dvc/dependency/repo.py b/dvc/dependency/repo.py
+index c1eb39c7d..b6fceb2d7 100644
+--- a/dvc/dependency/repo.py
++++ b/dvc/dependency/repo.py
+@@ -154,7 +154,7 @@ class RepoDependency(Dependency):
+         config["cache"]["dir"] = self.repo.cache.local_cache_dir
+ 
+         return DVCFileSystem(
+-            url=self.def_repo[self.PARAM_URL],
++            repo=self.def_repo[self.PARAM_URL],
+             rev=rev or self._get_rev(locked=locked),
+             subrepos=True,
+             config=config,
+diff --git a/dvc/fs/dvc.py b/dvc/fs/dvc.py
+index f1370de95..504b4c855 100644
+--- a/dvc/fs/dvc.py
++++ b/dvc/fs/dvc.py
+@@ -4,6 +4,7 @@ import ntpath
+ import os
+ import posixpath
+ import threading
++import warnings
+ from collections import defaultdict, deque
+ from contextlib import ExitStack, nullcontext, suppress
+ from glob import has_magic
+@@ -85,9 +86,8 @@ class _DVCFileSystem(AbstractFileSystem):
+ 
+     def __init__(  # noqa: PLR0913
+         self,
+-        url: Optional[str] = None,
++        repo: Optional[Union[str, os.PathLike, "Repo"]] = None,
+         rev: Optional[str] = None,
+-        repo: Optional["Repo"] = None,
+         subrepos: bool = False,
+         repo_factory: Optional[RepoFactory] = None,
+         fo: Optional[str] = None,
+@@ -101,7 +101,8 @@ class _DVCFileSystem(AbstractFileSystem):
+         """DVC + git-tracked files fs.
+ 
+         Args:
+-            path (str, optional): URL or path to a DVC/Git repository.
++            repo (str, os.PathLike or Repo, optional): URL or path to a
++                DVC/Git repository, or a `Repo` instance.
+                 Defaults to a DVC repository in the current working directory.
+                 Both HTTP and SSH protocols are supported for remote Git repos
+                 (e.g. [user@]server:project.git).
+@@ -111,7 +112,6 @@ class _DVCFileSystem(AbstractFileSystem):
+                 In case of a local repository, if rev is unspecified, it will
+                 default to the working directory.
+                 If the repo is not a Git repo, this option is ignored.
+-            repo (:obj:`Repo`, optional): `Repo` instance.
+             subrepos (bool): traverse to subrepos.
+                 By default, it ignores subrepos.
+             repo_factory (callable): A function to initialize subrepo with.
+@@ -136,8 +136,22 @@ class _DVCFileSystem(AbstractFileSystem):
+             ...    rev="main",
+             ... )
+         """
++        url = kwargs.pop("url", None)
++        if url is not None:
++            warnings.warn(
++                "The 'url' parameter is deprecated, use 'repo' instead.",
++                DeprecationWarning,
++                stacklevel=2,
++            )
++            if repo is None:
++                repo = url
++
+         super().__init__()
+-        self._repo = repo
++        if isinstance(repo, (str, os.PathLike)):
++            url = os.fspath(repo)
++            self._repo: Optional["Repo"] = None
++        else:
++            self._repo = repo
+         self._repo_factory = repo_factory
+         self._traverse_subrepos = subrepos
+         self._repo_stack = ExitStack()
+diff --git a/dvc/testing/api_tests.py b/dvc/testing/api_tests.py
+index e78147004..4549d4c6f 100644
+--- a/dvc/testing/api_tests.py
++++ b/dvc/testing/api_tests.py
+@@ -32,10 +32,10 @@ class TestAPI:
+         "fs_kwargs",
+         [
+             {},
+-            {"url": "{path}"},
+-            {"url": "{path}", "rev": "{default_branch}"},
+-            {"url": "file://{posixpath}"},
+-            {"url": "file://{posixpath}", "rev": "{default_branch}"},
++            {"repo": "{path}"},
++            {"repo": "{path}", "rev": "{default_branch}"},
++            {"repo": "file://{posixpath}"},
++            {"repo": "file://{posixpath}", "rev": "{default_branch}"},
+         ],
+         ids=["current", "local", "local_rev", "git", "git_rev"],
+     )
+@@ -59,8 +59,8 @@ class TestAPI:
+         if clear_cache:
+             remove(dvc.cache.repo.path)
+ 
+-        if url := fs_kwargs.get("url"):
+-            fs_kwargs["url"] = url.format(path=tmp_dir, posixpath=tmp_dir.as_posix())
++        if repo := fs_kwargs.get("repo"):
++            fs_kwargs["repo"] = repo.format(path=tmp_dir, posixpath=tmp_dir.as_posix())
+         if rev := fs_kwargs.get("rev"):
+             fs_kwargs["rev"] = rev.format(default_branch=scm.active_branch())
+ 
+diff --git a/tests/unit/fs/test_dvc.py b/tests/unit/fs/test_dvc.py
+index 728f045e9..2369e1eff 100644
+--- a/tests/unit/fs/test_dvc.py
++++ b/tests/unit/fs/test_dvc.py
+@@ -696,3 +696,45 @@ def test_fsid_url(erepo_dir):
+         fs = DVCFileSystem(repo=dvc)
+         assert fs.fsid != old_fsid
+         assert fs.fsid == "dvcfs_" + tokenize(url, erepo_dir.scm.get_rev())
++
++
++def test_init_with_url_kwarg_deprecated(tmp_dir, dvc):
++    tmp_dir.gen("foo", "foo")
++    dvc.add("foo")
++    (tmp_dir / "foo").unlink()
++
++    with pytest.warns(DeprecationWarning, match="use 'repo' instead"):
++        fs = DVCFileSystem(url=str(tmp_dir))
++        assert fs.exists("foo")
++
++    with pytest.warns(DeprecationWarning, match="use 'repo' instead"):
++        fs = DVCFileSystem(url=tmp_dir)
++        assert fs.exists("foo")
++
++    with pytest.warns(DeprecationWarning, match="use 'repo' instead"):
++        fs = DVCFileSystem(url=dvc)
++        assert fs.exists("foo")
++
++
++def test_init_with_repo_path(tmp_dir, dvc):
++    tmp_dir.gen("foo", "foo")
++    dvc.add("foo")
++    (tmp_dir / "foo").unlink()
++
++    fs = DVCFileSystem(repo=str(tmp_dir))
++    assert fs.exists("foo")
++
++    fs = DVCFileSystem(repo=tmp_dir)
++    assert fs.exists("foo")
++
++
++def test_url_to_fs(tmp_dir, dvc):
++    from fsspec.core import url_to_fs
++
++    tmp_dir.gen("foo", "foo")
++    dvc.add("foo")
++    (tmp_dir / "foo").unlink()
++
++    fs, _ = url_to_fs("dvc://", repo=str(tmp_dir))
++    with fs.open("foo") as fobj:
++        assert fobj.read() == b"foo"
+diff --git a/tests/unit/fs/test_dvcfs.py b/tests/unit/fs/test_dvcfs.py
+index 3dbc2ea7c..a98b9dafe 100644
+--- a/tests/unit/fs/test_dvcfs.py
++++ b/tests/unit/fs/test_dvcfs.py
+@@ -779,7 +779,7 @@ def test_maxdepth(tmp_dir, dvc, scm):
+         commit="add dir",
+     )
+ 
+-    fs = DVCFileSystem(url=tmp_dir)
++    fs = DVCFileSystem(repo=tmp_dir)
+     fs.get("dir", "dir1", recursive=True, maxdepth=1)
+     assert (tmp_dir / "dir1").read_text() == {"file1": "file1"}
+ 

@@ -1,0 +1,41 @@
+diff --git a/src/harbor/environments/e2b.py b/src/harbor/environments/e2b.py
+--- a/src/harbor/environments/e2b.py
++++ b/src/harbor/environments/e2b.py
+@@
++import asyncio
+@@
+-        await self._download_dir_with_exclusions_impl(
+-            source_dir=source_dir,
+-            target_dir=target_dir,
+-            exclude=[],
+-            service=None,
+-        )
++        try:
++            await asyncio.wait_for(
++                self._download_dir_with_exclusions_impl(
++                    source_dir=source_dir,
++                    target_dir=target_dir,
++                    exclude=[],
++                    service=None,
++                ),
++                timeout=90,
++            )
++        except asyncio.TimeoutError:
++            self.logger.warning(
++                "Timed out downloading E2B directory %r; continuing without it",
++                source_dir,
++            )
+@@
+-        info = await self._sandbox.files.get_info(path)
+-        return info.type == FileType.DIR
++        try:
++            info = await asyncio.wait_for(
++                self._sandbox.files.get_info(path), timeout=20
++            )
++        except asyncio.TimeoutError:
++            self.logger.warning(
++                "Timed out checking E2B path %r; treating suffix-less path as a directory",
++                path,
++            )
++            return not PurePosixPath(path).suffix
++        return info.type == FileType.DIR

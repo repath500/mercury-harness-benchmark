@@ -1,0 +1,95 @@
+diff --git a/dspy/predict/predict.py b/dspy/predict/predict.py
+index 9f78ca804..ae1fb6814 100644
+--- a/dspy/predict/predict.py
++++ b/dspy/predict/predict.py
+@@ -108,6 +108,14 @@ class Predict(Module, Parameter):
+         if (temperature is None or temperature <= 0.15) and num_generations > 1:
+             config["temperature"] = 0.7
+ 
++        # If the input contains a predicted output (OpenAI's Predicted Outputs
++        # feature), move it to the LM config so it can guide the generation
++        # instead of being treated as a regular input field.
++        prediction = kwargs.get("prediction")
++        if isinstance(prediction, dict) and prediction.get("type") == "content" and "content" in prediction:
++            kwargs.pop("prediction")
++            config["prediction"] = prediction
++
+         if not all(k in kwargs for k in signature.input_fields):
+             present = [k for k in signature.input_fields if k in kwargs]
+             missing = [k for k in signature.input_fields if k not in kwargs]
+diff --git a/tests/predict/test_predict.py b/tests/predict/test_predict.py
+index ba0c47820..538cba25f 100644
+--- a/tests/predict/test_predict.py
++++ b/tests/predict/test_predict.py
+@@ -572,3 +572,71 @@ async def test_async_predict():
+     dspy.settings.configure(lm=DummyLM([{"answer": "Paris"}]))
+     result = await program.acall(question="What is the capital of France?")
+     assert result.answer == "Paris"
++
++
++class PredictionSpyLM(dspy.LM):
++    def __init__(self, *args, **kwargs):
++        super().__init__(*args, **kwargs)
++        self.calls = []
++
++    def __call__(self, prompt=None, messages=None, **kwargs):
++        self.calls.append({"prompt": prompt, "messages": messages, "kwargs": kwargs})
++        return ["[[ ## answer ## ]]\nParis!"]
++
++    async def acall(self, prompt=None, messages=None, **kwargs):
++        self.calls.append({"prompt": prompt, "messages": messages, "kwargs": kwargs})
++        return ["[[ ## answer ## ]]\nParis!"]
++
++
++@pytest.mark.asyncio
++async def test_predicted_outputs_moved_to_lm_config():
++    """A valid OpenAI predicted output should be moved to the LM config, not treated as an input field."""
++    program = Predict("question -> answer")
++    prediction = {"type": "content", "content": "The capital of France is Paris."}
++
++    sync_lm = PredictionSpyLM("dummy_model")
++    dspy.settings.configure(lm=sync_lm)
++    result = program(question="What is the capital of France?", prediction=prediction, config={"temperature": 0.5})
++    assert result.answer == "Paris!"
++
++    assert len(sync_lm.calls) == 1
++    # The prediction should be forwarded to the LM as a config parameter.
++    assert sync_lm.calls[0]["kwargs"]["prediction"] == prediction
++    # Other config adjustments should still work alongside it.
++    assert sync_lm.calls[0]["kwargs"]["temperature"] == 0.5
++    # The prediction should not be kept in the processed input fields (e.g. it must
++    # not show up in the trace of module inputs).
++    assert "prediction" not in dspy.settings.trace[-1][1]
++    assert dspy.settings.trace[-1][1] == {"question": "What is the capital of France?"}
++
++    async_lm = PredictionSpyLM("dummy_model")
++    dspy.settings.configure(lm=async_lm)
++    result = await program.acall(question="What is the capital of France?", prediction=prediction, config={"temperature": 0.5})
++    assert result.answer == "Paris!"
++
++    assert len(async_lm.calls) == 1
++    assert async_lm.calls[0]["kwargs"]["prediction"] == prediction
++    assert async_lm.calls[0]["kwargs"]["temperature"] == 0.5
++
++
++@pytest.mark.parametrize(
++    "invalid_prediction",
++    [
++        "The capital of France is Paris.",
++        ["The capital of France is Paris."],
++        {"type": "other", "content": "The capital of France is Paris."},
++        {"type": "content"},
++        {"content": "The capital of France is Paris."},
++        None,
++    ],
++)
++def test_invalid_predicted_outputs_kept_as_input(invalid_prediction):
++    """Values that don't follow the predicted outputs format must remain regular input data."""
++    program = Predict("question -> answer")
++    lm = PredictionSpyLM("dummy_model")
++    dspy.settings.configure(lm=lm)
++
++    program(question="What is the capital of France?", prediction=invalid_prediction)
++
++    assert len(lm.calls) == 1
++    assert "prediction" not in lm.calls[0]["kwargs"]

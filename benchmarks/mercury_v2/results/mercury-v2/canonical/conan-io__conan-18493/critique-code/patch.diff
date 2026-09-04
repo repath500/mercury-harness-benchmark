@@ -1,0 +1,301 @@
+diff --git a/conan/api/subapi/workspace.py b/conan/api/subapi/workspace.py
+index 25e2cae6e..6f6bacd44 100644
+--- a/conan/api/subapi/workspace.py
++++ b/conan/api/subapi/workspace.py
+@@ -181,8 +181,8 @@ class WorkspaceAPI:
+         ref.validate_ref()
+         output_folder = make_abs_path(output_folder) if output_folder else None
+         # Check the conanfile is there, and name/version matches
+-        self._ws.add(ref, full_path, output_folder)
+-        return ref
++        added = self._ws.add(ref, full_path, output_folder)
++        return ref if added else None
+ 
+     @staticmethod
+     def init(path):
+diff --git a/conan/cli/commands/workspace.py b/conan/cli/commands/workspace.py
+index 3c88ae39b..bfa67e42f 100644
+--- a/conan/cli/commands/workspace.py
++++ b/conan/cli/commands/workspace.py
+@@ -71,7 +71,8 @@ def workspace_add(conan_api: ConanAPI, parser, subparser, *args):
+     ref = conan_api.workspace.add(path,
+                                   args.name, args.version, args.user, args.channel,
+                                   cwd, args.output_folder, remotes=remotes)
+-    ConanOutput().success("Reference '{}' added to workspace".format(ref))
++    if ref is not None:
++        ConanOutput().success("Reference '{}' added to workspace".format(ref))
+ 
+ 
+ @conan_subcommand()
+diff --git a/conan/internal/api/new/workspace.py b/conan/internal/api/new/workspace.py
+index 95ea84111..505751af8 100644
+--- a/conan/internal/api/new/workspace.py
++++ b/conan/internal/api/new/workspace.py
+@@ -5,12 +5,12 @@ from conan.internal.api.new.cmake_lib import cmake_lib_files
+ 
+ conanws_yml = """\
+ packages:
+-  liba/0.1:
+-    path: liba
+-  libb/0.1:
+-    path: libb
+-  app1/0.1:
+-    path: app1
++  - path: liba
++    ref: liba/0.1
++  - path: libb
++    ref: libb/0.1
++  - path: app1
++    ref: app1/0.1
+ """
+ 
+ cmake = """\
+diff --git a/conan/internal/model/workspace.py b/conan/internal/model/workspace.py
+index 2fe436564..ce9bbeea9 100644
+--- a/conan/internal/model/workspace.py
++++ b/conan/internal/model/workspace.py
+@@ -36,42 +36,62 @@ class Workspace:
+             data = yaml.safe_load(load(data_path))
+         except Exception as e:
+             raise ConanException("Invalid yml format at {}: {}".format(WORKSPACE_YML, e))
+-        return data or {}
++        data = data or {}
++        # Backwards compatibility: the old format used a dict of references -> package info
++        packages = data.get("packages")
++        if isinstance(packages, dict):
++            data["packages"] = [{"ref": ref, **(info or {})} for ref, info in packages.items()]
++        return data
++
++    @staticmethod
++    def _package_ref(info):
++        return info.get("ref") or info.get("path")
+ 
+     def add(self, ref, path, output_folder):
+         assert os.path.isfile(path)
+         path = self._conan_rel_path(os.path.dirname(path))
+         editable = {"path": path}
++        if ref is not None:
++            editable["ref"] = str(ref)
+         if output_folder:
+             editable["output_folder"] = self._conan_rel_path(output_folder)
+-        self.conan_data.setdefault("packages", {})[str(ref)] = editable
++        packages = self.conan_data.setdefault("packages", [])
++        for package in packages:
++            if package.get("path") == path:
++                self.output.warning(f"Package already exists in workspace for path: {path}")
++                return False
++            if ref is not None and package.get("ref") == str(ref):
++                raise ConanException(f"Package {ref} already exists in the workspace")
++        packages.append(editable)
+         save(os.path.join(self.folder, WORKSPACE_YML), yaml.dump(self.conan_data))
++        return True
+ 
+     def remove(self, path):
+-        found_ref = None
++        found = None
+         path = self._conan_rel_path(path)
+-        for ref, info in self.conan_data.get("packages", {}).items():
+-            if info["path"].replace("\\", "/") == path:
+-                found_ref = ref
++        for package in self.conan_data.get("packages", []):
++            if package.get("path", "").replace("\\", "/") == path:
++                found = package
+                 break
+-        if not found_ref:
+-            raise ConanException(f"No editable package to remove from this path: {path}")
+-        self.conan_data["packages"].pop(found_ref)
++        if not found:
++            raise ConanException(f"No package to remove from this path: {path}")
++        self.conan_data["packages"].remove(found)
+         save(os.path.join(self.folder, WORKSPACE_YML), yaml.dump(self.conan_data))
+-        return found_ref
++        return self._package_ref(found)
+ 
+     def clean(self):
+         self.output.info("Default workspace clean: Removing the output-folder of each editable")
+-        for ref, info in self.conan_data.get("packages", {}).items():
++        for info in self.conan_data.get("packages", []):
++            package_ref = self._package_ref(info)
+             if not info.get("output_folder"):
+-                self.output.info(f"Editable {ref} doesn't have an output_folder defined")
++                self.output.info(f"Editable {package_ref} doesn't have an output_folder defined")
+                 continue
+             of = os.path.join(self.folder, info["output_folder"])
+             try:
+-                self.output.info(f"Removing {ref} output folder: {of}")
++                self.output.info(f"Removing {package_ref} output folder: {of}")
+                 shutil.rmtree(of)
+             except OSError as e:
+-                self.output.warning(f"Error removing {ref} output folder: {str(e)}")
++                self.output.warning(f"Error removing {package_ref} output folder: {str(e)}")
+ 
+     def _conan_rel_path(self, path):
+         if path is None:
+@@ -82,7 +102,27 @@ class Workspace:
+         return path.replace("\\", "/")  # Normalize to unix path
+ 
+     def packages(self):
+-        return self.conan_data.get("packages", {})
++        result = {}
++        for info in self.conan_data.get("packages", []):
++            path = info.get("path")
++            if not path:
++                raise ConanException(f"Workspace package without a 'path' defined: {info}")
++            conanfile_path = os.path.normpath(os.path.join(self.folder, path, "conanfile.py"))
++            if not os.path.isfile(conanfile_path):
++                raise ConanException(f"Workspace editable not found: {conanfile_path}")
++            entry = {"path": path}
++            if info.get("output_folder"):
++                entry["output_folder"] = info["output_folder"]
++            ref = info.get("ref")
++            if ref is None:
++                # Deduce the reference from the package conanfile
++                conanfile = self.load_conanfile(path)
++                if conanfile.name is None or conanfile.version is None:
++                    raise ConanException(f"Could not deduce the reference of the workspace package"
++                                         f" in {path}, specify a 'ref' in {WORKSPACE_YML}")
++                ref = f"{conanfile.name}/{conanfile.version}"
++            result[ref] = entry
++        return dict(sorted(result.items()))
+ 
+     def load_conanfile(self, conanfile_path):
+         conanfile_path = os.path.join(self.folder, conanfile_path, "conanfile.py")
+diff --git a/test/integration/workspace/test_workspace.py b/test/integration/workspace/test_workspace.py
+index 3d3b27172..a4619edb6 100644
+--- a/test/integration/workspace/test_workspace.py
++++ b/test/integration/workspace/test_workspace.py
+@@ -4,6 +4,7 @@ import shutil
+ import textwrap
+ 
+ import pytest
++import yaml
+ 
+ from conan.api.subapi.workspace import WorkspaceAPI
+ from conan.test.assets.genconanfile import GenConanfile
+@@ -934,3 +935,126 @@ def test_keep_core_conf():
+     c.save_home({"global.conf": "core:default_profile=myprofile"})
+     c.run("workspace install")
+     assert "conanfile.py (pkga/0.1): Generating!: FreeBSD-armv7!!!!" in c.out
++
++
++class TestListFormat:
++    def test_new_format_parse(self):
++        # New list-based format, ref explicitly defined
++        c = TestClient(light=True)
++        c.save({"conanws.yml": textwrap.dedent("""\
++                    packages:
++                      - path: dep1
++                        ref: dep1/0.1
++                      - path: dep2
++                        ref: dep2/0.1
++                        output_folder: out
++                    """),
++                "dep1/conanfile.py": GenConanfile("dep1", "0.1"),
++                "dep2/conanfile.py": GenConanfile("dep2", "0.1")})
++        c.run("workspace info --format=json")
++        info = json.loads(c.stdout)
++        assert info["packages"] == {"dep1/0.1": {"path": "dep1"},
++                                    "dep2/0.1": {"path": "dep2", "output_folder": "out"}}
++
++    def test_new_format_ref_deduced(self):
++        # No ref in the yml: deduce it from the conanfile
++        c = TestClient(light=True)
++        c.save({"conanws.yml": "packages:\n  - path: dep1\n",
++                "dep1/conanfile.py": GenConanfile("dep1", "0.1")})
++        c.run("workspace info --format=json")
++        info = json.loads(c.stdout)
++        assert info["packages"] == {"dep1/0.1": {"path": "dep1"}}
++
++    def test_new_format_missing_path_error(self):
++        c = TestClient(light=True)
++        c.save({"conanws.yml": "packages:\n  - path: nodep\n",
++                "dep1/conanfile.py": GenConanfile("dep1", "0.1")})
++        c.run("workspace info", assert_error=True)
++        assert "Workspace editable not found" in c.out
++
++    def test_new_format_ref_deduction_error(self):
++        c = TestClient(light=True)
++        c.save({"conanws.yml": "packages:\n  - path: dep1\n",
++                "dep1/conanfile.py": GenConanfile()})
++        c.run("workspace info", assert_error=True)
++        assert "Could not deduce the reference" in c.out
++
++    def test_old_format_backward_compatibility(self):
++        c = TestClient(light=True)
++        c.save({"conanws.yml": textwrap.dedent("""\
++                    packages:
++                      dep1/0.1:
++                        path: dep1
++                    """),
++                "dep1/conanfile.py": GenConanfile("dep1", "0.1")})
++        c.run("workspace info --format=json")
++        info = json.loads(c.stdout)
++        assert info["packages"] == {"dep1/0.1": {"path": "dep1"}}
++        # Adding a package keeps working and preserves the old entry
++        c.save({"dep2/conanfile.py": GenConanfile("dep2", "0.1")})
++        c.run("workspace add dep2")
++        c.run("workspace info --format=json")
++        info = json.loads(c.stdout)
++        assert set(info["packages"].keys()) == {"dep1/0.1", "dep2/0.1"}
++        data = yaml.safe_load(c.load("conanws.yml"))
++        assert data["packages"] == [{"ref": "dep1/0.1", "path": "dep1"},
++                                    {"path": "dep2", "ref": "dep2/0.1"}]
++
++    def test_add_duplicated_path_skipped(self):
++        c = TestClient(light=True)
++        c.save({"conanws.yml": "",
++                "dep1/conanfile.py": GenConanfile("dep1", "0.1")})
++        c.run("workspace add dep1")
++        c.run("workspace add dep1")
++        assert "Package already exists in workspace for path" in c.out
++        data = yaml.safe_load(c.load("conanws.yml"))
++        assert len(data["packages"]) == 1
++
++    def test_add_duplicated_ref_error(self):
++        c = TestClient(light=True)
++        c.save({"conanws.yml": "",
++                "dep1/conanfile.py": GenConanfile("dep1", "0.1"),
++                "other/conanfile.py": GenConanfile("dep1", "0.1")})
++        c.run("workspace add dep1")
++        c.run("workspace add other", assert_error=True)
++        assert "Package dep1/0.1 already exists in the workspace" in c.out
++
++    def test_add_writes_list_format(self):
++        c = TestClient(light=True)
++        c.save({"conanws.yml": "",
++                "dep1/conanfile.py": GenConanfile("dep1", "0.1")})
++        c.run("workspace add dep1 -of=out")
++        data = yaml.safe_load(c.load("conanws.yml"))
++        assert data["packages"] == [{"path": "dep1", "ref": "dep1/0.1",
++                                     "output_folder": "out"}]
++
++    def test_remove_by_path_no_ref(self):
++        c = TestClient(light=True)
++        c.save({"conanws.yml": "packages:\n  - path: dep1\n",
++                "dep1/conanfile.py": GenConanfile("dep1", "0.1")})
++        c.run("workspace remove dep1")
++        assert "Removed from workspace: dep1" in c.out
++        data = yaml.safe_load(c.load("conanws.yml"))
++        assert data["packages"] == []
++
++    def test_clean_no_ref(self):
++        c = TestClient(light=True)
++        c.save({"conanws.yml": "packages:\n  - path: dep1\n  - path: dep2\n    ref: dep2/0.1\n"
++                               "    output_folder: out2\n",
++                "dep1/conanfile.py": GenConanfile("dep1", "0.1"),
++                "dep2/conanfile.py": GenConanfile("dep2", "0.1")})
++        os.makedirs(os.path.join(c.current_folder, "out2"))
++        c.run("workspace clean")
++        assert "doesn't have an output_folder defined" in c.out
++        assert "Removing dep2/0.1 output folder" in c.out
++        assert not os.path.exists(os.path.join(c.current_folder, "out2"))
++
++    def test_new_template_list_format(self):
++        c = TestClient(light=True)
++        c.run("new workspace")
++        data = yaml.safe_load(c.load("conanws.yml"))
++        assert data["packages"] == [{"path": "liba", "ref": "liba/0.1"},
++                                    {"path": "libb", "ref": "libb/0.1"},
++                                    {"path": "app1", "ref": "app1/0.1"}]
++        c.run("workspace info")
++        assert "liba/0.1" in c.out

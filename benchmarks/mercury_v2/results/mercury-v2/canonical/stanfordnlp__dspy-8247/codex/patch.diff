@@ -1,0 +1,87 @@
+diff --git a/dspy/predict/predict.py b/dspy/predict/predict.py
+index 9f78ca804..4449c2220 100644
+--- a/dspy/predict/predict.py
++++ b/dspy/predict/predict.py
+@@ -90,6 +90,18 @@ class Predict(Module, Parameter):
+ 
+         return await super().acall(**kwargs)
+ 
++    def _extract_openai_prediction(self, config, kwargs):
++        prediction = kwargs.get("prediction")
++        is_openai_prediction = (
++            isinstance(prediction, dict) and prediction.get("type") == "content" and "content" in prediction
++        )
++
++        if is_openai_prediction:
++            config = {**config, "prediction": prediction}
++            kwargs = {key: value for key, value in kwargs.items() if key != "prediction"}
++
++        return config, kwargs
++
+     def _forward_preprocess(self, **kwargs):
+         # Extract the three privileged keyword arguments.
+         assert "new_signature" not in kwargs, "new_signature is no longer a valid keyword argument."
+@@ -108,6 +120,8 @@ class Predict(Module, Parameter):
+         if (temperature is None or temperature <= 0.15) and num_generations > 1:
+             config["temperature"] = 0.7
+ 
++        config, kwargs = self._extract_openai_prediction(config, kwargs)
++
+         if not all(k in kwargs for k in signature.input_fields):
+             present = [k for k in signature.input_fields if k in kwargs]
+             missing = [k for k in signature.input_fields if k not in kwargs]
+diff --git a/tests/predict/test_predict.py b/tests/predict/test_predict.py
+index ba0c47820..f119283f7 100644
+--- a/tests/predict/test_predict.py
++++ b/tests/predict/test_predict.py
+@@ -71,6 +71,50 @@ def test_call_method():
+     assert result.output == "test output"
+ 
+ 
++def test_openai_prediction_is_moved_to_lm_config():
++    predict_instance = Predict("input -> output")
++    lm = DummyLM([{"output": "test output"}])
++    dspy.settings.configure(lm=lm)
++    prediction = {"type": "content", "content": "test prediction"}
++
++    result = predict_instance(input="test input", prediction=prediction)
++
++    assert result.output == "test output"
++    assert lm.history[0]["kwargs"]["prediction"] == prediction
++    assert "prediction" not in lm.history[0]["messages"][0]["content"]
++
++
++def test_non_openai_prediction_remains_input_data():
++    class PredictionInput(dspy.Signature):
++        prediction: str = dspy.InputField()
++        output: str = dspy.OutputField()
++
++    predict_instance = Predict(PredictionInput)
++    lm = DummyLM([{"output": "test output"}])
++    dspy.settings.configure(lm=lm)
++    prediction = '{"type": "other", "content": "test prediction"}'
++
++    result = predict_instance(prediction=prediction)
++
++    assert result.output == "test output"
++    assert "prediction" not in lm.history[0]["kwargs"]
++    trace_input = dspy.settings.trace[-1][1]
++    assert trace_input["prediction"] == prediction
++
++
++@pytest.mark.anyio
++async def test_openai_prediction_is_moved_to_lm_config_async():
++    predict_instance = Predict("input -> output")
++    lm = DummyLM([{"output": "test output"}])
++    dspy.settings.configure(lm=lm)
++    prediction = {"type": "content", "content": "test prediction"}
++
++    result = await predict_instance.acall(input="test input", prediction=prediction)
++
++    assert result.output == "test output"
++    assert lm.history[0]["kwargs"]["prediction"] == prediction
++
++
+ def test_instructions_after_dump_and_load_state():
+     predict_instance = Predict(Signature("input -> output", "original instructions"))
+     dumped_state = predict_instance.dump_state()

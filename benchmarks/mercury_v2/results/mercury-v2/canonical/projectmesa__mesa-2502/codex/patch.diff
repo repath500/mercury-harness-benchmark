@@ -1,0 +1,37 @@
+diff --git a/mesa/experimental/cell_space/cell_collection.py b/mesa/experimental/cell_space/cell_collection.py
+index ead67021..f5545c25 100644
+--- a/mesa/experimental/cell_space/cell_collection.py
++++ b/mesa/experimental/cell_space/cell_collection.py
+@@ -49,7 +49,9 @@ class CellCollection(Generic[T]):
+             self._cells = {cell: cell.agents for cell in cells}
+ 
+         #
+-        self._capacity: int = next(iter(self._cells.keys())).capacity
++        self._capacity: int | None = (
++            next(iter(self._cells.keys())).capacity if self._cells else None
++        )
+ 
+         if random is None:
+             warnings.warn(
+diff --git a/tests/test_cell_space.py b/tests/test_cell_space.py
+index add5f6f8..fa44e842 100644
+--- a/tests/test_cell_space.py
++++ b/tests/test_cell_space.py
+@@ -583,6 +583,17 @@ def test_cell_collection():
+     assert len(cells) == len(collection)
+ 
+ 
++def test_empty_cell_collection():
++    """Test that empty cell collections can be created and selected from."""
++    collection = CellCollection([], random=random.Random())
++    assert len(collection) == 0
++    assert collection._capacity is None
++
++    selected = collection.select(lambda cell: True)
++    assert len(selected) == 0
++    assert selected._capacity is None
++
++
+ ### PropertyLayer tests
+ def test_property_layer_integration():
+     """Test integration of PropertyLayer with DiscrateSpace and Cell."""

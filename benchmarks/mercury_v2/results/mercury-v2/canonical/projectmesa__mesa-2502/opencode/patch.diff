@@ -1,0 +1,69 @@
+diff --git a/mesa/experimental/cell_space/cell_collection.py b/mesa/experimental/cell_space/cell_collection.py
+index ead67021..ea683126 100644
+--- a/mesa/experimental/cell_space/cell_collection.py
++++ b/mesa/experimental/cell_space/cell_collection.py
+@@ -49,7 +49,9 @@ class CellCollection(Generic[T]):
+             self._cells = {cell: cell.agents for cell in cells}
+ 
+         #
+-        self._capacity: int = next(iter(self._cells.keys())).capacity
++        self._capacity: int | None = (
++            next(iter(self._cells.keys())).capacity if self._cells else None
++        )
+ 
+         if random is None:
+             warnings.warn(
+@@ -77,6 +79,17 @@ class CellCollection(Generic[T]):
+     def cells(self) -> list[T]:  # noqa
+         return list(self._cells.keys())
+ 
++    @property
++    def capacity(self) -> int | None:
++        """Capacity of the cells in the collection.
++
++        Returns:
++            The capacity shared by all cells in the collection, or None if the
++            collection is empty (in which case no capacity is available).
++
++        """
++        return self._capacity
++
+     @property
+     def agents(self) -> Iterable[CellAgent]:  # noqa
+         return itertools.chain.from_iterable(self._cells.values())
+diff --git a/tests/test_cell_space.py b/tests/test_cell_space.py
+index add5f6f8..365de0c8 100644
+--- a/tests/test_cell_space.py
++++ b/tests/test_cell_space.py
+@@ -583,6 +583,31 @@ def test_cell_collection():
+     assert len(cells) == len(collection)
+ 
+ 
++def test_empty_cell_collection():
++    """Test CellCollection with no cells."""
++    collection = CellCollection([], random=random.Random())
++    assert len(collection) == 0
++    assert len(list(collection)) == 0
++    assert len(collection.cells) == 0
++    assert len(list(collection.agents)) == 0
++    assert collection.capacity is None
++
++    selected = collection.select(lambda cell: True)
++    assert len(selected) == 0
++
++    grid = OrthogonalMooreGrid((10, 10), torus=False, random=random.Random(42))
++    empty = grid.all_cells.select(lambda cell: False)
++    assert len(empty) == 0
++    assert empty.capacity is None
++
++    grid = OrthogonalMooreGrid((10, 10), torus=False, random=random.Random(42))
++    cell = grid[0, 0]
++    cell.add_agent(CellAgent(Model()))
++    not_empty = grid.all_cells.select(lambda cell: True)
++    assert len(not_empty) == 100
++    assert not_empty.capacity == cell.capacity
++
++
+ ### PropertyLayer tests
+ def test_property_layer_integration():
+     """Test integration of PropertyLayer with DiscrateSpace and Cell."""

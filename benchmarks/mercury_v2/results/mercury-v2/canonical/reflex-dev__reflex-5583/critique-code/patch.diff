@@ -1,0 +1,161 @@
+diff --git a/reflex/app.py b/reflex/app.py
+index 8cee102f..e370e6b8 100644
+--- a/reflex/app.py
++++ b/reflex/app.py
+@@ -344,6 +344,9 @@ class App(MiddlewareMixin, LifespanMixin):
+     # Whether to include CSS reset for margin and padding (defaults to True).
+     reset_style: bool = dataclasses.field(default=True)
+ 
++    # Whether to enable state management for the app (defaults to True).
++    enable_state: bool = dataclasses.field(default=True)
++
+     # A component that is present on every page (defaults to the Connection Error banner).
+     overlay_component: Component | ComponentCallable | None = dataclasses.field(
+         default=None
+@@ -480,7 +483,9 @@ class App(MiddlewareMixin, LifespanMixin):
+             if issubclass(clz, AppMixin):
+                 clz._init_mixin(self)
+ 
+-        self._setup_state()
++        # Set up the state (only if state management is enabled).
++        if self.enable_state:
++            self._setup_state()
+ 
+         # Set up the admin dash.
+         self._setup_admin_dash()
+@@ -493,6 +498,8 @@ class App(MiddlewareMixin, LifespanMixin):
+ 
+     def _enable_state(self) -> None:
+         """Enable state for the app."""
++        if not self.enable_state:
++            return
+         if not self._state:
+             self._state = State
+             self._setup_state()
+@@ -829,7 +836,8 @@ class App(MiddlewareMixin, LifespanMixin):
+         # Setup dynamic args for the route.
+         # this state assignment is only required for tests using the deprecated state kwarg for App
+         state = self._state if self._state else State
+-        state.setup_dynamic_args(get_route_args(route))
++        if self.enable_state:
++            state.setup_dynamic_args(get_route_args(route))
+ 
+         self._load_events[route] = (
+             (on_load if isinstance(on_load, list) else [on_load])
+@@ -847,17 +855,28 @@ class App(MiddlewareMixin, LifespanMixin):
+             save_page: If True, the compiled page is saved to self._pages.
+         """
+         n_states_before = len(all_base_state_classes)
+-        component, enable_state = compiler.compile_unevaluated_page(
+-            route, self._unevaluated_pages[route], self._state, self.style, self.theme
+-        )
++        if self.enable_state:
++            component, enable_state = compiler.compile_unevaluated_page(
++                route,
++                self._unevaluated_pages[route],
++                self._state,
++                self.style,
++                self.theme,
++            )
+ 
+-        # Indicate that the app should use state.
+-        if enable_state:
+-            self._enable_state()
++            # Indicate that the app should use state.
++            if enable_state:
++                self._enable_state()
+ 
+-        # Indicate that evaluating this page creates one or more state classes.
+-        if len(all_base_state_classes) > n_states_before:
+-            self._stateful_pages[route] = None
++            # Indicate that evaluating this page creates one or more state classes.
++            if len(all_base_state_classes) > n_states_before:
++                self._stateful_pages[route] = None
++        else:
++            # State is disabled: compile the page without any state processing,
++            # treating all components as stateless regardless of their content.
++            component, _ = compiler.compile_unevaluated_page(
++                route, self._unevaluated_pages[route], None, self.style, self.theme
++            )
+ 
+         # Add the page.
+         self._check_routes_conflict(route)
+@@ -1232,7 +1251,8 @@ class App(MiddlewareMixin, LifespanMixin):
+         # Add the optional endpoints (_upload)
+         self._add_optional_endpoints()
+ 
+-        self._validate_var_dependencies()
++        if self.enable_state:
++            self._validate_var_dependencies()
+         self._setup_overlay_component()
+ 
+         if config.show_built_with_reflex is None:
+@@ -1273,7 +1293,7 @@ class App(MiddlewareMixin, LifespanMixin):
+             self.app_wraps.items(), self.extra_app_wraps.items()
+         ):
+             # If the app wrap is a callable, generate the component
+-            component = app_wrap(self._state is not None)
++            component = app_wrap(self._state is not None and self.enable_state)
+             if component is not None:
+                 app_wrappers[key] = component
+ 
+diff --git a/tests/units/test_app.py b/tests/units/test_app.py
+index ceb8a421..17b2836d 100644
+--- a/tests/units/test_app.py
++++ b/tests/units/test_app.py
+@@ -47,6 +47,7 @@ from reflex.state import (
+     StateManagerRedis,
+     StateUpdate,
+     _substate_key,
++    all_base_state_classes,
+ )
+ from reflex.style import Style
+ from reflex.utils import console, exceptions, format
+@@ -1527,6 +1528,47 @@ def test_app_state_manager():
+     )
+ 
+ 
++def test_app_enable_state_disabled():
++    """State can be disabled at the app level and stays disabled."""
++    app = App(enable_state=False)
++    assert app.enable_state is False
++
++    # _enable_state is a no-op when state is disabled.
++    app._enable_state()
++    assert app._state is None
++    assert app._state_manager is None
++    with pytest.raises(ValueError):
++        _ = app.state_manager
++
++    # App initialization skipped state setup.
++    assert app._event_namespace is None
++
++
++def test_app_enable_state_disabled_compile_page():
++    """Pages are compiled without state processing when state is disabled."""
++    app = App(enable_state=False)
++
++    def index():
++        return rx.box("Index")
++
++    def stateful_page():
++        return rx.box("Stateful")
++
++    app.add_page(index, route="/", on_load=lambda: None)
++    app.add_page(stateful_page, route="/stateful")
++
++    n_states_before = len(all_base_state_classes)
++    app._compile_page("index")
++    app._compile_page("stateful")
++
++    # State was not enabled, even for pages that look stateful.
++    assert app._state is None
++    assert app._stateful_pages == {}
++    assert len(all_base_state_classes) == n_states_before
++    assert "index" in app._pages
++    assert "stateful" in app._pages
++
++
+ def test_generate_component():
+     def index():
+         return rx.box("Index")

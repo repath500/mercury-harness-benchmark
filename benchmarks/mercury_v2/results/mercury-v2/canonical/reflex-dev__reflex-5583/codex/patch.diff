@@ -1,0 +1,132 @@
+diff --git a/reflex/app.py b/reflex/app.py
+index 8cee102f..99b3f473 100644
+--- a/reflex/app.py
++++ b/reflex/app.py
+@@ -330,6 +330,9 @@ class App(MiddlewareMixin, LifespanMixin):
+     ```
+     """
+ 
++    # Whether state management is enabled. Defaults to `config.enable_state`.
++    enable_state: bool | None = None
++
+     # The global [theme](https://reflex.dev/docs/styling/theming/#theme) for the entire app.
+     theme: Component | None = dataclasses.field(
+         default_factory=lambda: themes.theme(accent_color="blue")
+@@ -394,6 +397,9 @@ class App(MiddlewareMixin, LifespanMixin):
+     # A mapping of pages which created states as they were being evaluated.
+     _stateful_pages: dict[str, None] = dataclasses.field(default_factory=dict)
+ 
++    # Whether state management is enabled for the app.
++    _state_enabled: bool = True
++
+     # The backend API object.
+     _api: Starlette | None = None
+ 
+@@ -465,6 +471,10 @@ class App(MiddlewareMixin, LifespanMixin):
+             raise ValueError(msg)
+ 
+         get_config(reload=True)
++        config = get_config()
++        self._state_enabled = (
++            config.enable_state if self.enable_state is None else self.enable_state
++        )
+ 
+         if "breakpoints" in self.style:
+             set_breakpoints(self.style.pop("breakpoints"))
+@@ -493,6 +503,8 @@ class App(MiddlewareMixin, LifespanMixin):
+ 
+     def _enable_state(self) -> None:
+         """Enable state for the app."""
++        if not self._state_enabled:
++            return
+         if not self._state:
+             self._state = State
+             self._setup_state()
+@@ -1139,13 +1151,14 @@ class App(MiddlewareMixin, LifespanMixin):
+         should_compile = self._should_compile()
+         backend_dir = prerequisites.get_backend_dir()
+         if not dry_run and not should_compile and backend_dir.exists():
+-            stateful_pages_marker = backend_dir / constants.Dirs.STATEFUL_PAGES
+-            if stateful_pages_marker.exists():
+-                with stateful_pages_marker.open("r") as f:
+-                    stateful_pages = json.load(f)
+-                for route in stateful_pages:
+-                    console.debug(f"BE Evaluating stateful page: {route}")
+-                    self._compile_page(route, save_page=False)
++            if self._state_enabled:
++                stateful_pages_marker = backend_dir / constants.Dirs.STATEFUL_PAGES
++                if stateful_pages_marker.exists():
++                    with stateful_pages_marker.open("r") as f:
++                        stateful_pages = json.load(f)
++                    for route in stateful_pages:
++                        console.debug(f"BE Evaluating stateful page: {route}")
++                        self._compile_page(route, save_page=False)
+                 self._enable_state()
+             self._add_optional_endpoints()
+             return
+@@ -1306,7 +1319,11 @@ class App(MiddlewareMixin, LifespanMixin):
+             progress.advance(task)
+ 
+         # Catch "static" apps (that do not define a rx.State subclass) which are trying to access rx.State.
+-        if code_uses_state_contexts(stateful_components_code) and self._state is None:
++        if (
++            code_uses_state_contexts(stateful_components_code)
++            and self._state is None
++            and get_config().enable_state
++        ):
+             msg = (
+                 "To access rx.State in frontend components, at least one "
+                 "subclass of rx.State must be defined in the app."
+diff --git a/reflex/compiler/compiler.py b/reflex/compiler/compiler.py
+index ee47094d..c370baac 100644
+--- a/reflex/compiler/compiler.py
++++ b/reflex/compiler/compiler.py
+@@ -815,7 +815,7 @@ def compile_unevaluated_page(
+ 
+         enable_state = False
+         # Ensure state is enabled if this page uses state.
+-        if state is None:
++        if state is None and get_config().enable_state:
+             if page.on_load or component._has_stateful_event_triggers():
+                 enable_state = True
+             else:
+diff --git a/reflex/config.py b/reflex/config.py
+index b4970c75..a0ef4700 100644
+--- a/reflex/config.py
++++ b/reflex/config.py
+@@ -150,6 +150,9 @@ class BaseConfig:
+     # The name of the app (should match the name of the app directory).
+     app_name: str
+ 
++    # Whether to enable state management for the app.
++    enable_state: bool = True
++
+     # The path to the app module.
+     app_module_import: str | None = None
+ 
+diff --git a/tests/units/test_app.py b/tests/units/test_app.py
+index ceb8a421..7d32d0ee 100644
+--- a/tests/units/test_app.py
++++ b/tests/units/test_app.py
+@@ -1491,6 +1491,21 @@ def test_app_state_determination():
+     assert a4._state is not None
+ 
+ 
++def test_app_disable_state():
++    """Test that state stays disabled even for stateful-looking pages."""
++    app = App(enable_state=False)
++    app.add_page(rx.box("Index"), route="/")
++    app.add_page(
++        rx.box(rx.text(GenState.value)), route="/stateful", on_load=rx.console_log("")
++    )
++    app._compile_page("stateful")
++
++    assert app._state_enabled is False
++    assert app._state is None
++    assert app._state_manager is None
++    assert app.get_load_events("/stateful")
++
++
+ def test_raise_on_state():
+     """Test that the state is set."""
+     # state kwargs is deprecated, we just make sure the app is created anyway.

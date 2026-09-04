@@ -1,0 +1,16 @@
+diff --git a/src/harbor/agents/installed/base.py b/src/harbor/agents/installed/base.py
+--- a/src/harbor/agents/installed/base.py
++++ b/src/harbor/agents/installed/base.py
+@@
+-            command = f"apt-get update && apt-get install -y {package_args}"
++            # Some E2B base images retain a geographically mirrored Debian
++            # source whose package index points at objects that have already
++            # rotated out. Refresh against the canonical Debian mirror before
++            # installing benchmark dependencies.
++            command = (
++                "for source in /etc/apt/sources.list /etc/apt/sources.list.d/*.list; do "
++                "[ -f \"$source\" ] && sed -i "
++                "'s@mirrors\\.tuna\\.tsinghua\\.edu\\.cn@deb.debian.org@g' \"$source\" || true; "
++                "done; rm -rf /var/lib/apt/lists/*; "
++                f"apt-get update && apt-get install -y {package_args}"
++            )

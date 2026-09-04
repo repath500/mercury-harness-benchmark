@@ -1,0 +1,127 @@
+diff --git a/dspy/primitives/tool.py b/dspy/primitives/tool.py
+index 94817397e..48d7f1b4d 100644
+--- a/dspy/primitives/tool.py
++++ b/dspy/primitives/tool.py
+@@ -57,6 +57,7 @@ class Tool:
+         self.args = args
+         self.arg_types = arg_types
+         self.arg_desc = arg_desc
++        self.has_var_keyword = False
+ 
+         self._parse_function(func, arg_desc)
+ 
+@@ -101,11 +102,25 @@ class Tool:
+ 
+         # Use inspect.signature to get all arg names
+         sig = inspect.signature(annotations_func)
++        # Whether the function accepts arbitrary keyword arguments (e.g. a **kwargs parameter). Such functions
++        # can receive keyword arguments that are not explicitly defined in their signature.
++        self.has_var_keyword = any(
++            param.kind == inspect.Parameter.VAR_KEYWORD for param in sig.parameters.values()
++        )
+         # Get available type hints
+         available_hints = get_type_hints(annotations_func)
+-        # Build a dictionary of arg name -> type (defaulting to Any when missing)
+-        hints = {param_name: available_hints.get(param_name, Any) for param_name in sig.parameters.keys()}
+-        default_values = {param_name: sig.parameters[param_name].default for param_name in sig.parameters.keys()}
++        # Build a dictionary of arg name -> type (defaulting to Any when missing), skipping *args/**kwargs
++        # parameters since they are not concrete, nameable arguments of the function.
++        hints = {
++            param_name: available_hints.get(param_name, Any)
++            for param_name, param in sig.parameters.items()
++            if param.kind not in (inspect.Parameter.VAR_POSITIONAL, inspect.Parameter.VAR_KEYWORD)
++        }
++        default_values = {
++            param_name: sig.parameters[param_name].default
++            for param_name, param in sig.parameters.items()
++            if param.kind not in (inspect.Parameter.VAR_POSITIONAL, inspect.Parameter.VAR_KEYWORD)
++        }
+ 
+         # Process each argument's type to generate its JSON schema.
+         for k, v in hints.items():
+@@ -147,6 +162,11 @@ class Tool:
+     def __call__(self, **kwargs):
+         for k, v in kwargs.items():
+             if k not in self.args:
++                # If the function accepts arbitrary keyword arguments (e.g. a **kwargs parameter), allow
++                # arguments that are not explicitly defined in its signature to pass through, since the
++                # underlying function is designed to handle them.
++                if self.has_var_keyword:
++                    continue
+                 raise ValueError(f"Arg {k} is not in the tool's args.")
+             try:
+                 instance = v.model_dump() if hasattr(v, "model_dump") else v
+diff --git a/tests/primitives/test_tool.py b/tests/primitives/test_tool.py
+index ce6b3f441..cd503a104 100644
+--- a/tests/primitives/test_tool.py
++++ b/tests/primitives/test_tool.py
+@@ -113,6 +113,69 @@ def test_tool_from_function_with_pydantic():
+     assert tool.args["model"]["properties"]["field1"]["default"] == "hello"
+ 
+ 
++def test_tool_with_kwargs():
++    def dummy_function_with_kwargs(**kwargs):
++        """A function that accepts arbitrary keyword arguments."""
++        return kwargs.get("c", 1) * kwargs.get("d", 1)
++
++    tool = Tool(dummy_function_with_kwargs)
++
++    assert tool.has_var_keyword is True
++    assert tool.args == {}
++    assert tool(c=5, d=4) == 20
++
++
++def test_tool_with_kwargs_passes_through_arbitrary_args():
++    def dummy_function_with_kwargs(**kwargs):
++        return kwargs
++
++    tool = Tool(dummy_function_with_kwargs)
++
++    assert tool(anything="goes", other=123) == {"anything": "goes", "other": 123}
++
++
++def test_tool_with_named_args_and_kwargs():
++    def dummy_function_with_kwargs(a: int, c=1, d=1, **kwargs):
++        return a + c * d
++
++    tool = Tool(dummy_function_with_kwargs)
++
++    assert tool.has_var_keyword is True
++    assert tool.args == {"a": {"type": "integer"}, "c": {"default": 1}, "d": {"default": 1}}
++    assert tool(a=2, c=5, d=4, extra="ignored") == 22
++
++
++def test_tool_with_kwargs_still_validates_named_args():
++    def dummy_function_with_kwargs(a: int, **kwargs):
++        return a
++
++    tool = Tool(dummy_function_with_kwargs)
++
++    with pytest.raises(ValueError):
++        tool(a="not an integer")
++
++
++def test_tool_without_kwargs_rejects_unknown_args():
++    tool = Tool(dummy_function)
++
++    assert tool.has_var_keyword is False
++    with pytest.raises(ValueError, match="Arg unknown is not in the tool's args."):
++        tool(x=1, y="hello", unknown="boo")
++
++
++def test_tool_from_class_with_kwargs():
++    class Foo:
++        def __call__(self, **kwargs):
++            """Multiply two values."""
++            return kwargs.get("c", 1) * kwargs.get("d", 1)
++
++    tool = Tool(Foo())
++
++    assert tool.has_var_keyword is True
++    assert tool.args == {}
++    assert tool(c=5, d=4) == 20
++
++
+ def test_tool_from_function_with_pydantic_nesting():
+     tool = Tool(complex_dummy_function)
+ 

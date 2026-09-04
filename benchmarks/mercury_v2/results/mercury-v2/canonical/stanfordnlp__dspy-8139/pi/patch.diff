@@ -1,0 +1,255 @@
+diff --git a/dspy/predict/react.py b/dspy/predict/react.py
+index 0580a7f7b..7e1b6fe41 100644
+--- a/dspy/predict/react.py
++++ b/dspy/predict/react.py
+@@ -1,3 +1,5 @@
++import asyncio
++import inspect
+ import logging
+ from typing import Any, Callable, Literal
+ 
+@@ -98,6 +100,49 @@ class ReAct(Module):
+         extract = self._call_with_potential_trajectory_truncation(self.extract, trajectory, **input_args)
+         return dspy.Prediction(trajectory=trajectory, **extract)
+ 
++    async def aforward(self, **input_args):
++        trajectory = {}
++        max_iters = input_args.pop("max_iters", self.max_iters)
++        for idx in range(max_iters):
++            try:
++                pred = await self._acall_with_potential_trajectory_truncation(self.react, trajectory, **input_args)
++            except ValueError as err:
++                logger.warning(f"Ending the trajectory: Agent failed to select a valid tool: {_fmt_exc(err)}")
++                break
++
++            trajectory[f"thought_{idx}"] = pred.next_thought
++            trajectory[f"tool_name_{idx}"] = pred.next_tool_name
++            trajectory[f"tool_args_{idx}"] = pred.next_tool_args
++
++            try:
++                trajectory[f"observation_{idx}"] = await self._atool_call(pred.next_tool_name, **pred.next_tool_args)
++            except Exception as err:
++                trajectory[f"observation_{idx}"] = f"Execution error in {pred.next_tool_name}: {_fmt_exc(err)}"
++
++            if pred.next_tool_name == "finish":
++                break
++
++        extract = await self._acall_with_potential_trajectory_truncation(self.extract, trajectory, **input_args)
++        return dspy.Prediction(trajectory=trajectory, **extract)
++
++    async def _atool_call(self, tool_name: str, **kwargs):
++        """Calls a tool asynchronously, seamlessly handling both async and sync tools."""
++        tool = self.tools[tool_name]
++        if inspect.iscoroutinefunction(tool.func) or inspect.iscoroutinefunction(getattr(tool.func, "__call__", None)):
++            return await tool.acall(**kwargs)
++        return tool(**kwargs)
++
++    async def _acall_with_potential_trajectory_truncation(self, module, trajectory, **input_args):
++        for _ in range(3):
++            try:
++                return await module.acall(
++                    **input_args,
++                    trajectory=self._format_trajectory(trajectory),
++                )
++            except ContextWindowExceededError:
++                logger.warning("Trajectory exceeded the context window, truncating the oldest tool call information.")
++                trajectory = self.truncate_trajectory(trajectory)
++
+     def _call_with_potential_trajectory_truncation(self, module, trajectory, **input_args):
+         for _ in range(3):
+             try:
+diff --git a/tests/predict/test_react.py b/tests/predict/test_react.py
+index 3a39b09b7..e203c76bd 100644
+--- a/tests/predict/test_react.py
++++ b/tests/predict/test_react.py
+@@ -1,8 +1,10 @@
++import asyncio
++import re
+ from pydantic import BaseModel
+ 
+-import re
+ import dspy
+ import litellm
++import pytest
+ 
+ from dspy.utils.dummies import DummyLM
+ 
+@@ -323,3 +325,178 @@ def test_error_retry():
+     for i in range(2):
+         obs = traj[f"observation_{i}"]
+         assert re.search(r"\btool error\b", obs), f"unexpected observation_{i!r}: {obs}"
++
++
++@pytest.mark.asyncio
++async def test_async_tool_calling_with_async_tool():
++    async def fetch(text: str) -> str:
++        """Fetch some data asynchronously."""
++        await asyncio.sleep(0.001)
++        return f"Fetched: {text}"
++
++    react = dspy.ReAct("a -> b:str", tools=[fetch])
++    lm = DummyLM(
++        [
++            {"next_thought": "I need to fetch data.", "next_tool_name": "fetch", "next_tool_args": {"text": "hello"}},
++            {"next_thought": "I have the data, now I can finish.", "next_tool_name": "finish", "next_tool_args": {}},
++            {"reasoning": "I fetched the data successfully", "b": "Fetched: hello"},
++        ]
++    )
++    dspy.settings.configure(lm=lm)
++    outputs = await react.acall(a="hello")
++
++    expected_trajectory = {
++        "thought_0": "I need to fetch data.",
++        "tool_name_0": "fetch",
++        "tool_args_0": {"text": "hello"},
++        "observation_0": "Fetched: hello",
++        "thought_1": "I have the data, now I can finish.",
++        "tool_name_1": "finish",
++        "tool_args_1": {},
++        "observation_1": "Completed.",
++    }
++    assert outputs.trajectory == expected_trajectory
++    assert outputs.b == "Fetched: hello"
++
++
++@pytest.mark.asyncio
++async def test_async_mixed_sync_and_async_tools():
++    async def async_double(x: int) -> int:
++        """Double a number asynchronously."""
++        await asyncio.sleep(0.001)
++        return x * 2
++
++    def sync_square(x: int) -> int:
++        """Square a number synchronously."""
++        return x * x
++
++    react = dspy.ReAct("a -> c:int", tools=[async_double, sync_square])
++    lm = DummyLM(
++        [
++            {"next_thought": "I need to double the number.", "next_tool_name": "async_double", "next_tool_args": {"x": 3}},
++            {"next_thought": "Now I need to square it.", "next_tool_name": "sync_square", "next_tool_args": {"x": 6}},
++            {"next_thought": "I have the result, now I can finish.", "next_tool_name": "finish", "next_tool_args": {}},
++            {"reasoning": "I computed everything successfully", "c": 36},
++        ]
++    )
++    dspy.settings.configure(lm=lm)
++    outputs = await react.acall(a=3)
++
++    assert outputs.trajectory["observation_0"] == 6
++    assert outputs.trajectory["observation_1"] == 36
++    assert outputs.trajectory["observation_2"] == "Completed."
++    assert outputs.c == 36
++
++
++@pytest.mark.asyncio
++async def test_async_trajectory_truncation():
++    # Create a simple async tool for testing
++    async def echo(text: str) -> str:
++        return f"Echoed: {text}"
++
++    # Create ReAct instance with our echo tool
++    react = dspy.ReAct("input_text -> output_text", tools=[echo])
++
++    # Mock react.react to simulate multiple tool calls
++    call_count = 0
++
++    class AsyncMockModule:
++        async def acall(self, **kwargs):
++            nonlocal call_count
++            call_count += 1
++
++            if call_count < 3:
++                # First 2 calls use the echo tool
++                return dspy.Prediction(
++                    next_thought=f"Thought {call_count}",
++                    next_tool_name="echo",
++                    next_tool_args={"text": f"Text {call_count}"},
++                )
++            elif call_count == 3:
++                # The 3rd call raises context window exceeded error
++                raise litellm.ContextWindowExceededError("Context window exceeded", "dummy_model", "dummy_provider")
++            else:
++                # The 4th call finishes
++                return dspy.Prediction(next_thought="Final thought", next_tool_name="finish", next_tool_args={})
++
++    class AsyncMockExtract:
++        async def acall(self, **kwargs):
++            return dspy.Prediction(output_text="Final output")
++
++    react.react = AsyncMockModule()
++    react.extract = AsyncMockExtract()
++
++    # Call aforward and get the result
++    result = await react.acall(input_text="test input")
++
++    # Verify that older entries in the trajectory were truncated
++    assert "thought_0" not in result.trajectory
++    assert "thought_2" in result.trajectory
++    assert result.output_text == "Final output"
++
++
++@pytest.mark.asyncio
++async def test_async_error_retry():
++    # --- a tiny async tool that always fails -------------------------------
++    async def foo(a, b):  # noqa: D401, ANN001
++        raise Exception("tool error")
++
++    # --- program under test -------------------------------------------------
++    react = dspy.ReAct("a, b -> c:int", tools=[foo])
++    lm = DummyLM(
++        [
++            {
++                "next_thought": "I need to add two numbers.",
++                "next_tool_name": "foo",
++                "next_tool_args": {"a": 1, "b": 2},
++            },
++            {
++                "next_thought": "I need to add two numbers.",
++                "next_tool_name": "foo",
++                "next_tool_args": {"a": 1, "b": 2},
++            },
++            # (The model *would* succeed on the 3rd turn, but max_iters=2 stops earlier.)
++            {"reasoning": "I added the numbers successfully", "c": 3},
++        ]
++    )
++    dspy.settings.configure(lm=lm)
++
++    outputs = await react.acall(a=1, b=2, max_iters=2)
++    traj = outputs.trajectory
++
++    # --- exact-match checks (thoughts + tool calls) -------------------------
++    control_expected = {
++        "thought_0": "I need to add two numbers.",
++        "tool_name_0": "foo",
++        "tool_args_0": {"a": 1, "b": 2},
++        "thought_1": "I need to add two numbers.",
++        "tool_name_1": "foo",
++        "tool_args_1": {"a": 1, "b": 2},
++    }
++    for k, v in control_expected.items():
++        assert traj[k] == v, f"{k} mismatch"
++
++    # --- flexible checks for observations ----------------------------------
++    for i in range(2):
++        obs = traj[f"observation_{i}"]
++        assert re.search(r"\btool error\b", obs), f"unexpected observation_{i!r}: {obs}"
++
++
++def test_async_tool_call_detection():
++    async def async_tool(x: int) -> int:
++        return x
++
++    def sync_tool(x: int) -> int:
++        return x
++
++    class AsyncCallableTool:
++        async def __call__(self, x: int) -> int:
++            return x
++
++    react = dspy.ReAct("a -> b:int", tools=[async_tool, sync_tool, AsyncCallableTool()])
++
++    # Async tools (including callable instances with async __call__) go through `acall`
++    assert asyncio.iscoroutinefunction(react.tools["async_tool"].func)
++    assert asyncio.iscoroutinefunction(react.tools["AsyncCallableTool"].func.__call__)
++    # Sync tools are detected as such so they can be called normally
++    assert not asyncio.iscoroutinefunction(react.tools["sync_tool"].func)

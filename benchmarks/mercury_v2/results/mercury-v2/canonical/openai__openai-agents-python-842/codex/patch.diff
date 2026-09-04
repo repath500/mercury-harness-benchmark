@@ -1,0 +1,252 @@
+diff --git a/docs/models/index.md b/docs/models/index.md
+index 1c89d778..ceb03efc 100644
+--- a/docs/models/index.md
++++ b/docs/models/index.md
+@@ -93,6 +93,17 @@ english_agent = Agent(
+ )
+ ```
+ 
++For provider-specific parameters that are not part of `ModelSettings`, use `extra_args` as an escape
++hatch. These keyword arguments are passed directly to the model provider's API. Since providers do
++not all support the same parameters, unsupported values can cause API errors.
++
++```python
++model_settings = ModelSettings(
++    temperature=0.1,
++    extra_args={"service_tier": "flex"},
++)
++```
++
+ ## Common issues with using other LLM providers
+ 
+ ### Tracing client error 401
+diff --git a/src/agents/extensions/models/litellm_model.py b/src/agents/extensions/models/litellm_model.py
+index 7cf7a2de..f005e47c 100644
+--- a/src/agents/extensions/models/litellm_model.py
++++ b/src/agents/extensions/models/litellm_model.py
+@@ -283,27 +283,29 @@ class LitellmModel(Model):
+             extra_kwargs["metadata"] = model_settings.metadata
+         if model_settings.extra_body and isinstance(model_settings.extra_body, dict):
+             extra_kwargs.update(model_settings.extra_body)
+-
+-        ret = await litellm.acompletion(
+-            model=self.model,
+-            messages=converted_messages,
+-            tools=converted_tools or None,
+-            temperature=model_settings.temperature,
+-            top_p=model_settings.top_p,
+-            frequency_penalty=model_settings.frequency_penalty,
+-            presence_penalty=model_settings.presence_penalty,
+-            max_tokens=model_settings.max_tokens,
+-            tool_choice=self._remove_not_given(tool_choice),
+-            response_format=self._remove_not_given(response_format),
+-            parallel_tool_calls=parallel_tool_calls,
+-            stream=stream,
+-            stream_options=stream_options,
+-            reasoning_effort=reasoning_effort,
+-            extra_headers={**HEADERS, **(model_settings.extra_headers or {})},
+-            api_key=self.api_key,
+-            base_url=self.base_url,
++        extra_kwargs.update(model_settings.get_extra_args())
++
++        request_kwargs: dict[str, Any] = {
++            "model": self.model,
++            "messages": converted_messages,
++            "tools": converted_tools or None,
++            "temperature": model_settings.temperature,
++            "top_p": model_settings.top_p,
++            "frequency_penalty": model_settings.frequency_penalty,
++            "presence_penalty": model_settings.presence_penalty,
++            "max_tokens": model_settings.max_tokens,
++            "tool_choice": self._remove_not_given(tool_choice),
++            "response_format": self._remove_not_given(response_format),
++            "parallel_tool_calls": parallel_tool_calls,
++            "stream": stream,
++            "stream_options": stream_options,
++            "reasoning_effort": reasoning_effort,
++            "extra_headers": {**HEADERS, **(model_settings.extra_headers or {})},
++            "api_key": self.api_key,
++            "base_url": self.base_url,
+             **extra_kwargs,
+-        )
++        }
++        ret = await litellm.acompletion(**request_kwargs)
+ 
+         if isinstance(ret, litellm.types.utils.ModelResponse):
+             return ret
+diff --git a/src/agents/model_settings.py b/src/agents/model_settings.py
+index 7b016c98..108780d2 100644
+--- a/src/agents/model_settings.py
++++ b/src/agents/model_settings.py
+@@ -18,6 +18,9 @@ class ModelSettings:
+ 
+     Not all models/providers support all of these parameters, so please check the API documentation
+     for the specific model and provider you are using.
++
++    Be cautious when using `extra_args`: providers may not support arbitrary parameters, and
++    unsupported values can cause API errors.
+     """
+ 
+     temperature: float | None = None
+@@ -73,6 +76,14 @@ class ModelSettings:
+     """Additional headers to provide with the request.
+     Defaults to None if not provided."""
+ 
++    extra_args: dict[str, Any] | None = None
++    """Arbitrary keyword arguments to pass directly to the model provider's API.
++
++    These arguments are merged with the arguments generated from the other fields. This is an
++    escape hatch for provider-specific parameters that are not yet supported by this class, so
++    check the provider's API documentation before using it.
++    """
++
+     def resolve(self, override: ModelSettings | None) -> ModelSettings:
+         """Produce a new ModelSettings by overlaying any non-None values from the
+         override on top of this instance."""
+@@ -84,8 +95,14 @@ class ModelSettings:
+             for field in fields(self)
+             if getattr(override, field.name) is not None
+         }
++        if self.extra_args or override.extra_args:
++            changes["extra_args"] = {**(self.extra_args or {}), **(override.extra_args or {})}
+         return replace(self, **changes)
+ 
++    def get_extra_args(self) -> dict[str, Any]:
++        """Return non-None extra arguments suitable for passing to a provider API call."""
++        return {key: value for key, value in (self.extra_args or {}).items() if value is not None}
++
+     def to_json_dict(self) -> dict[str, Any]:
+         dataclass_dict = dataclasses.asdict(self)
+ 
+diff --git a/src/agents/models/openai_chatcompletions.py b/src/agents/models/openai_chatcompletions.py
+index 6b4045d2..b691de28 100644
+--- a/src/agents/models/openai_chatcompletions.py
++++ b/src/agents/models/openai_chatcompletions.py
+@@ -261,27 +261,29 @@ class OpenAIChatCompletionsModel(Model):
+             self._get_client(), model_settings, stream=stream
+         )
+ 
+-        ret = await self._get_client().chat.completions.create(
+-            model=self.model,
+-            messages=converted_messages,
+-            tools=converted_tools or NOT_GIVEN,
+-            temperature=self._non_null_or_not_given(model_settings.temperature),
+-            top_p=self._non_null_or_not_given(model_settings.top_p),
+-            frequency_penalty=self._non_null_or_not_given(model_settings.frequency_penalty),
+-            presence_penalty=self._non_null_or_not_given(model_settings.presence_penalty),
+-            max_tokens=self._non_null_or_not_given(model_settings.max_tokens),
+-            tool_choice=tool_choice,
+-            response_format=response_format,
+-            parallel_tool_calls=parallel_tool_calls,
+-            stream=stream,
+-            stream_options=self._non_null_or_not_given(stream_options),
+-            store=self._non_null_or_not_given(store),
+-            reasoning_effort=self._non_null_or_not_given(reasoning_effort),
+-            extra_headers={**HEADERS, **(model_settings.extra_headers or {})},
+-            extra_query=model_settings.extra_query,
+-            extra_body=model_settings.extra_body,
+-            metadata=self._non_null_or_not_given(model_settings.metadata),
+-        )
++        request_kwargs: dict[str, Any] = {
++            "model": self.model,
++            "messages": converted_messages,
++            "tools": converted_tools or NOT_GIVEN,
++            "temperature": self._non_null_or_not_given(model_settings.temperature),
++            "top_p": self._non_null_or_not_given(model_settings.top_p),
++            "frequency_penalty": self._non_null_or_not_given(model_settings.frequency_penalty),
++            "presence_penalty": self._non_null_or_not_given(model_settings.presence_penalty),
++            "max_tokens": self._non_null_or_not_given(model_settings.max_tokens),
++            "tool_choice": tool_choice,
++            "response_format": response_format,
++            "parallel_tool_calls": parallel_tool_calls,
++            "stream": stream,
++            "stream_options": self._non_null_or_not_given(stream_options),
++            "store": self._non_null_or_not_given(store),
++            "reasoning_effort": self._non_null_or_not_given(reasoning_effort),
++            "extra_headers": {**HEADERS, **(model_settings.extra_headers or {})},
++            "extra_query": model_settings.extra_query,
++            "extra_body": model_settings.extra_body,
++            "metadata": self._non_null_or_not_given(model_settings.metadata),
++        }
++        request_kwargs.update(model_settings.get_extra_args())
++        ret = await self._get_client().chat.completions.create(**request_kwargs)
+ 
+         if isinstance(ret, ChatCompletion):
+             return ret
+diff --git a/src/agents/models/openai_responses.py b/src/agents/models/openai_responses.py
+index 86c8e69c..b10de7d1 100644
+--- a/src/agents/models/openai_responses.py
++++ b/src/agents/models/openai_responses.py
+@@ -231,6 +231,7 @@ class OpenAIResponsesModel(Model):
+         tool_choice = Converter.convert_tool_choice(model_settings.tool_choice)
+         converted_tools = Converter.convert_tools(tools, handoffs)
+         response_format = Converter.get_response_format(output_schema)
++        extra_args = model_settings.get_extra_args()
+ 
+         if _debug.DONT_LOG_MODEL_DATA:
+             logger.debug("Calling LLM")
+@@ -245,28 +246,30 @@ class OpenAIResponsesModel(Model):
+                 f"Previous response id: {previous_response_id}\n"
+             )
+ 
+-        return await self._client.responses.create(
+-            previous_response_id=self._non_null_or_not_given(previous_response_id),
+-            instructions=self._non_null_or_not_given(system_instructions),
+-            model=self.model,
+-            input=list_input,
+-            include=converted_tools.includes,
+-            tools=converted_tools.tools,
+-            temperature=self._non_null_or_not_given(model_settings.temperature),
+-            top_p=self._non_null_or_not_given(model_settings.top_p),
+-            truncation=self._non_null_or_not_given(model_settings.truncation),
+-            max_output_tokens=self._non_null_or_not_given(model_settings.max_tokens),
+-            tool_choice=tool_choice,
+-            parallel_tool_calls=parallel_tool_calls,
+-            stream=stream,
+-            extra_headers={**_HEADERS, **(model_settings.extra_headers or {})},
+-            extra_query=model_settings.extra_query,
+-            extra_body=model_settings.extra_body,
+-            text=response_format,
+-            store=self._non_null_or_not_given(model_settings.store),
+-            reasoning=self._non_null_or_not_given(model_settings.reasoning),
+-            metadata=self._non_null_or_not_given(model_settings.metadata),
+-        )
++        request_kwargs: dict[str, Any] = {
++            "previous_response_id": self._non_null_or_not_given(previous_response_id),
++            "instructions": self._non_null_or_not_given(system_instructions),
++            "model": self.model,
++            "input": list_input,
++            "include": converted_tools.includes,
++            "tools": converted_tools.tools,
++            "temperature": self._non_null_or_not_given(model_settings.temperature),
++            "top_p": self._non_null_or_not_given(model_settings.top_p),
++            "truncation": self._non_null_or_not_given(model_settings.truncation),
++            "max_output_tokens": self._non_null_or_not_given(model_settings.max_tokens),
++            "tool_choice": tool_choice,
++            "parallel_tool_calls": parallel_tool_calls,
++            "stream": stream,
++            "extra_headers": {**_HEADERS, **(model_settings.extra_headers or {})},
++            "extra_query": model_settings.extra_query,
++            "extra_body": model_settings.extra_body,
++            "text": response_format,
++            "store": self._non_null_or_not_given(model_settings.store),
++            "reasoning": self._non_null_or_not_given(model_settings.reasoning),
++            "metadata": self._non_null_or_not_given(model_settings.metadata),
++        }
++        request_kwargs.update(extra_args)
++        return await self._client.responses.create(**request_kwargs)  # type: ignore[no-any-return]
+ 
+     def _get_client(self) -> AsyncOpenAI:
+         if self._client is None:
+diff --git a/tests/model_settings/test_serialization.py b/tests/model_settings/test_serialization.py
+index d76a58d1..ab3af481 100644
+--- a/tests/model_settings/test_serialization.py
++++ b/tests/model_settings/test_serialization.py
+@@ -47,6 +47,7 @@ def test_all_fields_serialization() -> None:
+         extra_query={"foo": "bar"},
+         extra_body={"foo": "bar"},
+         extra_headers={"foo": "bar"},
++        extra_args={"foo": "bar"},
+     )
+ 
+     # Verify that every single field is set to a non-None value

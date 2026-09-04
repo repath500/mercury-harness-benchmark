@@ -1,0 +1,62 @@
+diff --git a/mesa/visualization/solara_viz.py b/mesa/visualization/solara_viz.py
+index 48f64c18..28f50bff 100644
+--- a/mesa/visualization/solara_viz.py
++++ b/mesa/visualization/solara_viz.py
+@@ -190,8 +190,9 @@ def ModelController(
+     """
+     playing = solara.use_reactive(False)
+     running = solara.use_reactive(True)
++    default_model_parameters = solara.use_reactive({})  # noqa: SH102
+     if model_parameters is None:
+-        model_parameters = solara.use_reactive({})
++        model_parameters = default_model_parameters
+ 
+     async def step():
+         while playing.value and running.value:
+@@ -306,8 +307,9 @@ def ModelCreator(
+         - The component provides an interface for adjusting user-defined parameters and reseeding the model.
+ 
+     """
++    default_model_parameters = solara.use_reactive({})  # noqa: SH102
+     if model_parameters is None:
+-        model_parameters = solara.use_reactive({})
++        model_parameters = default_model_parameters
+ 
+     solara.use_effect(
+         lambda: _check_model_params(model.value.__class__.__init__, fixed_params),
+@@ -345,10 +347,12 @@ def _check_model_params(init_func, model_params):
+             model_parameters[name].default == inspect.Parameter.empty
+             and name not in model_params
+             and name != "self"
++            and model_parameters[name].kind
++            not in (inspect.Parameter.VAR_POSITIONAL, inspect.Parameter.VAR_KEYWORD)
+         ):
+             raise ValueError(f"Missing required model parameter: {name}")
+     for name in model_params:
+-        if name not in model_parameters:
++        if name not in model_parameters and "kwargs" not in model_parameters:
+             raise ValueError(f"Invalid model parameter: {name}")
+ 
+ 
+diff --git a/tests/test_solara_viz.py b/tests/test_solara_viz.py
+index 68057757..d1fa5d7d 100644
+--- a/tests/test_solara_viz.py
++++ b/tests/test_solara_viz.py
+@@ -203,3 +203,17 @@ def test_model_param_checks():  # noqa: D103
+     # Test empty params dict raises ValueError if required params
+     with pytest.raises(ValueError, match="Missing required model parameter"):
+         _check_model_params(ModelWithOnlyRequired.__init__, {})
++
++
++def test_model_param_checks_with_kwargs():  # noqa: D103
++    class ModelWithKwargs:
++        def __init__(self, required_param, **kwargs):
++            pass
++
++    # kwargs itself should not be flagged as a missing required parameter
++    _check_model_params(ModelWithKwargs.__init__, {"required_param": 1})
++
++    # extra params should be allowed when the constructor accepts **kwargs
++    _check_model_params(
++        ModelWithKwargs.__init__, {"required_param": 1, "extra_param": 2}
++    )

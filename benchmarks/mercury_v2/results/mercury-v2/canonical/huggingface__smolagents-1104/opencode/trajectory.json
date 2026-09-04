@@ -1,0 +1,510 @@
+{
+  "schema_version": "ATIF-v1.7",
+  "session_id": "ses_f95353caeffejotdEZsRANp0zo",
+  "agent": {
+    "name": "opencode",
+    "version": "1.18.27",
+    "model_name": "openrouter/z-ai/glm-5.3-flash"
+  },
+  "steps": [
+    {
+      "step_id": 1,
+      "source": "user",
+      "message": "I want to ensure that when my AI assistant presents a plan to me, it automatically follows up with a clear instruction to execute that plan. This should help prevent the AI from simply continuing to elaborate on the plan instead of moving forward with action. Specifically, after the assistant displays the plan content, I want the system to immediately show a user-style message saying \"Now go on and execute this plan.\" This creates a natural transition that signals the assistant to stop planning and start implementing the steps. The message should appear exactly once after each plan is shown, but only when the full conversation is being displayed (not in summary mode). I need this behavior to be consistent and automatic every time a plan is generated and presented to me.\n"
+    },
+    {
+      "step_id": 2,
+      "timestamp": "2026-09-04T05:01:11.961000+00:00",
+      "source": "agent",
+      "model_name": "openrouter/z-ai/glm-5.3-flash",
+      "message": "",
+      "reasoning_content": "Let me understand the request. The user wants behavior in an AI assistant system where, when a plan is presented, a follow-up user-style message \"Now go on and execute this plan.\" is automatically shown after the plan content. This should appear exactly once after each plan is shown, only when the full conversation is displayed (not in summary mode).\n\nThis sounds like a codebase modification task. Let me explore the /testbed directory to understand what codebase we're working with.",
+      "tool_calls": [
+        {
+          "tool_call_id": "call_01a06acad61f7df2b85d3b92",
+          "function_name": "bash",
+          "arguments": {
+            "command": "ls /testbed && git -C /testbed log --oneline -5 && git -C /testbed status"
+          }
+        }
+      ],
+      "observation": {
+        "results": [
+          {
+            "source_call_id": "call_01a06acad61f7df2b85d3b92",
+            "content": "CODE_OF_CONDUCT.md\nCONTRIBUTING.md\nLICENSE\nMakefile\nREADME.md\ndocs\ne2b.toml\nexamples\npyproject.toml\nsrc\ntests\nutils\n35e9e8a Remove transformers/huggingface-hub to check torch availability (#1022)\n337288e Fix get_json_schema for docstrings with type annotations (#1088)\nf6ccb87 Add security disclaimer to MCP docs (#1090)\n3240fa8 Make pandas a test extra dependency only (#1081)\nd8d3aa0 Refactor step yielding during streaming run to log PlanningSteps (#1083)\nOn branch main\nnothing to commit, working tree clean\n"
+          }
+        ]
+      },
+      "metrics": {
+        "prompt_tokens": 7195,
+        "completion_tokens": 35,
+        "cost_usd": 0.000572625,
+        "extra": {
+          "reasoning_tokens": 97
+        }
+      },
+      "llm_call_count": 1
+    },
+    {
+      "step_id": 3,
+      "timestamp": "2026-09-04T05:01:14.320000+00:00",
+      "source": "agent",
+      "model_name": "openrouter/z-ai/glm-5.3-flash",
+      "message": "",
+      "reasoning_content": "This is the smolagents codebase (HuggingFace). The user wants: when a plan is presented, automatically show a user-style message \"Now go on and execute this plan.\" after the plan content, exactly once, only when the full conversation is displayed (not summary mode).\n\nLet me explore the codebase to find where plans are displayed.",
+      "tool_calls": [
+        {
+          "tool_call_id": "call_01a06acade6a7fb1abeafdc8",
+          "function_name": "bash",
+          "arguments": {
+            "command": "ls /testbed/src /testbed/src/*"
+          }
+        },
+        {
+          "tool_call_id": "call_01a06acadeec77b2991bd8f7",
+          "function_name": "grep",
+          "arguments": {
+            "path": "/testbed/src",
+            "pattern": "plan"
+          }
+        }
+      ],
+      "observation": {
+        "results": [
+          {
+            "source_call_id": "call_01a06acade6a7fb1abeafdc8",
+            "content": "/testbed/src:\nsmolagents\n\n/testbed/src/smolagents:\n__init__.py\n_function_type_hints_utils.py\nagent_types.py\nagents.py\ncli.py\ndefault_tools.py\ngradio_ui.py\nlocal_python_executor.py\nmemory.py\nmodels.py\nmonitoring.py\nprompts\nremote_executors.py\ntool_validation.py\ntools.py\nutils.py\nvision_web_browser.py\n"
+          },
+          {
+            "source_call_id": "call_01a06acadeec77b2991bd8f7",
+            "content": "Found 92 matches\n/testbed/src/smolagents/memory.py:\n  Line 150:     plan: str\n\n  Line 155:         return [Message(role=MessageRole.ASSISTANT, content=[{\"type\": \"text\", \"text\": self.plan.strip()}])]\n\n  Line 226:                 logger.log_markdown(title=\"Agent output:\", content=step.facts + \"\\n\" + step.plan, level=LogLevel.ERROR)\n\n\n/testbed/src/smolagents/gradio_ui.py:\n  Line 132:         yield gr.ChatMessage(role=\"assistant\", content=step_log.plan)\n\n\n/testbed/src/smolagents/prompts/toolcalling_agent.yaml:\n  Line 117: planning:\n\n  Line 118:   initial_plan : |-\n\n  Line 119:     You are a world expert at analyzing a situation to derive facts, and plan accordingly towards solving a task.\n\n  Line 120:     Below I will present you a task. You will need to 1. build a survey of facts known or needed to solve the task, then 2. make a plan of action to solve the task.\n\n  Line 145:     Then for the given task, develop a step-by-step high-level plan taking into account the above inputs and list of facts.\n\n  Line 146:     This plan should involve individual tasks based on the available tools, that if executed correctly will yield the correct answer.\n\n  Line 147:     Do not skip steps, do not add any superfluous steps. Only write the high-level plan, DO NOT DETAIL INDIVIDUAL TOOL CALLS.\n\n  Line 148:     After writing the final step of the plan, write the '\\n<end_plan>' tag and stop there.\n\n  Line 174:     Now begin! First in part 1, list the facts that you have at your disposal, then in part 2, make a plan to solve the task.\n\n  Line 175:   update_plan_pre_messages: |-\n\n  Line 176:     You are a world expert at analyzing a situation to derive facts, and plan accordingly towards solving a task.\n\n  Line 189:     Then you will have to propose an updated plan to solve the task.\n\n  Line 190:     If the previous tries so far have met some success, you can make an updated plan based on these actions.\n\n  Line 191:     If you are stalled, you can make a completely new plan starting from scratch.\n\n  Line 194:   update_plan_post_messages: |-\n\n  Line 203:     Then write a step-by-step high-level plan to solve the task above.\n\n  Line 208:     This plan should involve individual tasks based on the available tools, that if executed correctly will yield the correct answer.\n\n  Line 210:     Do not skip steps, do not add any superfluous steps. Only write the high-level plan, DO NOT DETAIL INDIVIDUAL TOOL CALLS.\n\n  Line 211:     After writing the final step of the plan, write the '\\n<end_plan>' tag and stop there.\n\n  Line 230:     Now write your new plan below.\n\n\n/testbed/src/smolagents/agents.py:\n  Line 93:     Prompt templates for the planning step.\n\n  Line 97:         initial_plan (`str`): Initial plan prompt.\n\n  Line 100:         update_plan_pre_messages (`str`): Update plan pre-messages prompt.\n\n  Line 101:         update_plan_post_messages (`str`): Update plan post-messages prompt.\n\n  Line 105:     initial_plan: str\n\n  Line 108:     update_plan_pre_messages: str\n\n  Line 109:     update_plan_post_messages: str\n\n  Line 144:         planning ([`~agents.PlanningPromptTemplate`]): Planning prompt templates.\n\n  Line 150:     planning: PlanningPromptTemplate\n\n  Line 157:     planning=PlanningPromptTemplate(\n\n  Line 159:         initial_plan=\"\",\n\n  Line 162:         update_plan_pre_messages=\"\",\n\n  Line 163:         update_plan_post_messages=\"\",\n\n  Line 186:         planning_interval (`int`, *optional*): Interval at which the agent will run a planning step.\n\n  Line 204:         planning_interval: Optional[int] = None,\n\n  Line 216:         self.planning_interval = planning_interval\n\n  Line 340:             if self.planning_interval is not None and self.step_number % self.planning_interval == 1:\n\n  Line 341:                 planning_step = self._create_planning_step(\n\n  Line 344:                 self.memory.steps.append(planning_step)\n\n  Line 345:                 yield planning_step\n\n  Line 407:     def _create_planning_step(self, task, is_first_step: bool, step: int) -> PlanningStep:\n\n  Line 416:                                 self.prompt_templates[\"planning\"][\"initial_plan\"],\n\n  Line 423:             plan_message = self.model(input_messages, stop_sequences=[\"<end_plan>\"])\n\n  Line 424:             plan = textwrap.dedent(\n\n  Line 425:                 f\"\"\"Here are the facts I know and the plan of action that I will follow to solve the task:\\n```\\n{plan_message.content}\\n```\"\"\"\n\n  Line 428:             # Summary mode removes the system prompt and previous planning messages output by the model.\n\n  Line 429:             # Removing previous planning messages avoids influencing too much the new plan.\n\n  Line 431:             plan_update_pre = {\n\n  Line 437:                             self.prompt_templates[\"planning\"][\"update_plan_pre_messages\"], variables={\"task\": task}\n\n  Line 442:             plan_update_post = {\n\n  Line 448:                             self.prompt_templates[\"planning\"][\"update_plan_post_messages\"],\n\n  Line 459:             input_messages = [plan_update_pre] + memory_messages + [plan_update_post]\n\n  Line 460:             plan_message = self.model(input_messages, stop_sequences=[\"<end_plan>\"])\n\n  Line 461:             plan = textwrap.dedent(\n\n  Line 462:                 f\"\"\"I still need to solve the task I was given:\\n```\\n{self.task}\\n```\\n\\nHere are the facts I know and my new/updated plan of action to solve the task:\\n```\\n{plan_message.content}\\n```\"\"\"\n\n  Line 464:         log_headline = \"Initial plan\" if is_first_step else \"Updated plan\"\n\n  Line 465:         self.logger.log(Rule(f\"[bold]{log_headline}\", style=\"orange\"), Text(plan), level=LogLevel.INFO)\n\n  Line 468:             plan=plan,\n\n  Line 469:             model_output_message=plan_message,\n\n  Line 752:             \"planning_interval\": self.planning_interval,\n\n  Line 845:             planning_interval=agent_dict[\"planning_interval\"],\n\n  Line 921:         planning_interval (`int`, *optional*): Interval at which the agent will run a planning step.\n\n  Line 930:         planning_interval: Optional[int] = None,\n\n  Line 940:             planning_interval=planning_interval,\n\n  Line 1127:         planning_interval (`int`, *optional*): Interval at which the agent will run a planning step.\n\n  Line 1142:         planning_interval: Optional[int] = None,\n\n  Line 1159:             planning_interval=planning_interval,\n\n\n/testbed/src/smolagents/prompts/code_agent.yaml:\n  Line 4:   To solve the task, you must plan forward to proceed in a series of steps, in a cycle of 'Thought:', 'Code:', and 'Observation:' sequences.\n\n  Line 174: planning:\n\n  Line 175:   initial_plan : |-\n\n  Line 176:     You are a world expert at analyzing a situation to derive facts, and plan accordingly towards solving a task.\n\n  Line 177:     Below I will present you a task. You will need to 1. build a survey of facts known or needed to solve the task, then 2. make a plan of action to solve the task.\n\n  Line 202:     Then for the given task, develop a step-by-step high-level plan taking into account the above inputs and list of facts.\n\n  Line 203:     This plan should involve individual tasks based on the available tools, that if executed correctly will yield the correct answer.\n\n  Line 204:     Do not skip steps, do not add any superfluous steps. Only write the high-level plan, DO NOT DETAIL INDIVIDUAL TOOL CALLS.\n\n  Line 205:     After writing the final step of the plan, write the '\\n<end_plan>' tag and stop there.\n\n  Line 231:     Now begin! First in part 1, list the facts that you have at your disposal, then in part 2, make a plan to solve the task.\n\n  Line 232:   update_plan_pre_messages: |-\n\n  Line 233:     You are a world expert at analyzing a situation to derive facts, and plan accordingly towards solving a task.\n\n  Line 246:     Then you will have to propose an updated plan to solve the task.\n\n  Line 247:     If the previous tries so far have met some success, you can make an updated plan based on these actions.\n\n  Line 248:     If you are stalled, you can make a completely new plan starting from scratch.\n\n  Line 251:   update_plan_post_messages: |-\n\n  Line 260:     Then write a step-by-step high-level plan to solve the task above.\n\n  Line 265:     This plan should involve individual tasks based on the available tools, that if executed correctly will yield the correct answer.\n\n  Line 267:     Do not skip steps, do not add any superfluous steps. Only write the high-level plan, DO NOT DETAIL INDIVIDUAL TOOL CALLS.\n\n  Line 268:     After writing the final step of the plan, write the '\\n<end_plan>' tag and stop there.\n\n  Line 287:     Now write your new plan below.\n"
+          }
+        ]
+      },
+      "metrics": {
+        "prompt_tokens": 7475,
+        "completion_tokens": 37,
+        "cost_usd": 0.000587625,
+        "extra": {
+          "reasoning_tokens": 71
+        }
+      },
+      "llm_call_count": 1
+    },
+    {
+      "step_id": 4,
+      "timestamp": "2026-09-04T05:01:16.252000+00:00",
+      "source": "agent",
+      "model_name": "openrouter/z-ai/glm-5.3-flash",
+      "message": "",
+      "reasoning_content": "This is the smolagents codebase. The user wants: after a plan is displayed, a user-style message \"Now go on and execute this plan.\" should be automatically added to the memory so the model knows to execute the plan.\n\nLet me look at the relevant code: `_create_planning_step` in agents.py (lines ~407-470), and `PlanningStep` in memory.py (lines ~150-155).",
+      "tool_calls": [
+        {
+          "tool_call_id": "call_01a06acae7cc7e9285fa1b7f",
+          "function_name": "read",
+          "arguments": {
+            "filePath": "/testbed/src/smolagents/agents.py",
+            "limit": 75,
+            "offset": 400
+          }
+        },
+        {
+          "tool_call_id": "call_01a06acae86675138f80d645",
+          "function_name": "read",
+          "arguments": {
+            "filePath": "/testbed/src/smolagents/memory.py"
+          }
+        }
+      ],
+      "observation": {
+        "results": [
+          {
+            "source_call_id": "call_01a06acae7cc7e9285fa1b7f",
+            "content": "<path>/testbed/src/smolagents/agents.py</path>\n<type>file</type>\n<content>\n400:         self.memory.steps.append(final_memory_step)\n401:         for callback in self.step_callbacks:\n402:             callback(final_memory_step) if len(inspect.signature(callback).parameters) == 1 else callback(\n403:                 final_memory_step, agent=self\n404:             )\n405:         return final_answer\n406: \n407:     def _create_planning_step(self, task, is_first_step: bool, step: int) -> PlanningStep:\n408:         if is_first_step:\n409:             input_messages = [\n410:                 {\n411:                     \"role\": MessageRole.USER,\n412:                     \"content\": [\n413:                         {\n414:                             \"type\": \"text\",\n415:                             \"text\": populate_template(\n416:                                 self.prompt_templates[\"planning\"][\"initial_plan\"],\n417:                                 variables={\"task\": task, \"tools\": self.tools, \"managed_agents\": self.managed_agents},\n418:                             ),\n419:                         }\n420:                     ],\n421:                 }\n422:             ]\n423:             plan_message = self.model(input_messages, stop_sequences=[\"<end_plan>\"])\n424:             plan = textwrap.dedent(\n425:                 f\"\"\"Here are the facts I know and the plan of action that I will follow to solve the task:\\n```\\n{plan_message.content}\\n```\"\"\"\n426:             )\n427:         else:\n428:             # Summary mode removes the system prompt and previous planning messages output by the model.\n429:             # Removing previous planning messages avoids influencing too much the new plan.\n430:             memory_messages = self.write_memory_to_messages(summary_mode=True)\n431:             plan_update_pre = {\n432:                 \"role\": MessageRole.SYSTEM,\n433:                 \"content\": [\n434:                     {\n435:                         \"type\": \"text\",\n436:                         \"text\": populate_template(\n437:                             self.prompt_templates[\"planning\"][\"update_plan_pre_messages\"], variables={\"task\": task}\n438:                         ),\n439:                     }\n440:                 ],\n441:             }\n442:             plan_update_post = {\n443:                 \"role\": MessageRole.USER,\n444:                 \"content\": [\n445:                     {\n446:                         \"type\": \"text\",\n447:                         \"text\": populate_template(\n448:                             self.prompt_templates[\"planning\"][\"update_plan_post_messages\"],\n449:                             variables={\n450:                                 \"task\": task,\n451:                                 \"tools\": self.tools,\n452:                                 \"managed_agents\": self.managed_agents,\n453:                                 \"remaining_steps\": (self.max_steps - step),\n454:                             },\n455:                         ),\n456:                     }\n457:                 ],\n458:             }\n459:             input_messages = [plan_update_pre] + memory_messages + [plan_update_post]\n460:             plan_message = self.model(input_messages, stop_sequences=[\"<end_plan>\"])\n461:             plan = textwrap.dedent(\n462:                 f\"\"\"I still need to solve the task I was given:\\n```\\n{self.task}\\n```\\n\\nHere are the facts I know and my new/updated plan of action to solve the task:\\n```\\n{plan_message.content}\\n```\"\"\"\n463:             )\n464:         log_headline = \"Initial plan\" if is_first_step else \"Updated plan\"\n465:         self.logger.log(Rule(f\"[bold]{log_headline}\", style=\"orange\"), Text(plan), level=LogLevel.INFO)\n466:         return PlanningStep(\n467:             model_input_messages=input_messages,\n468:             plan=plan,\n469:             model_output_message=plan_message,\n470:         )\n471: \n472:     @property\n473:     def logs(self):\n474:         logger.warning(\n\n(Showing lines 400-474 of 1310. Use offset=475 to continue.)\n</content>"
+          },
+          {
+            "source_call_id": "call_01a06acae86675138f80d645",
+            "content": "<path>/testbed/src/smolagents/memory.py</path>\n<type>file</type>\n<content>\n1: from dataclasses import asdict, dataclass\n2: from logging import getLogger\n3: from typing import TYPE_CHECKING, Any, Dict, List, TypedDict, Union\n4: \n5: from smolagents.models import ChatMessage, MessageRole\n6: from smolagents.monitoring import AgentLogger, LogLevel\n7: from smolagents.utils import AgentError, make_json_serializable\n8: \n9: \n10: if TYPE_CHECKING:\n11:     import PIL.Image\n12: \n13:     from smolagents.models import ChatMessage\n14:     from smolagents.monitoring import AgentLogger\n15: \n16: \n17: logger = getLogger(__name__)\n18: \n19: \n20: class Message(TypedDict):\n21:     role: MessageRole\n22:     content: str | list[dict]\n23: \n24: \n25: @dataclass\n26: class ToolCall:\n27:     name: str\n28:     arguments: Any\n29:     id: str\n30: \n31:     def dict(self):\n32:         return {\n33:             \"id\": self.id,\n34:             \"type\": \"function\",\n35:             \"function\": {\n36:                 \"name\": self.name,\n37:                 \"arguments\": make_json_serializable(self.arguments),\n38:             },\n39:         }\n40: \n41: \n42: @dataclass\n43: class MemoryStep:\n44:     def dict(self):\n45:         return asdict(self)\n46: \n47:     def to_messages(self, **kwargs) -> List[Dict[str, Any]]:\n48:         raise NotImplementedError\n49: \n50: \n51: @dataclass\n52: class ActionStep(MemoryStep):\n53:     model_input_messages: List[Message] | None = None\n54:     tool_calls: List[ToolCall] | None = None\n55:     start_time: float | None = None\n56:     end_time: float | None = None\n57:     step_number: int | None = None\n58:     error: AgentError | None = None\n59:     duration: float | None = None\n60:     model_output_message: ChatMessage = None\n61:     model_output: str | None = None\n62:     observations: str | None = None\n63:     observations_images: List[\"PIL.Image.Image\"] | None = None\n64:     action_output: Any = None\n65: \n66:     def dict(self):\n67:         # We overwrite the method to parse the tool_calls and action_output manually\n68:         return {\n69:             \"model_input_messages\": self.model_input_messages,\n70:             \"tool_calls\": [tc.dict() for tc in self.tool_calls] if self.tool_calls else [],\n71:             \"start_time\": self.start_time,\n72:             \"end_time\": self.end_time,\n73:             \"step\": self.step_number,\n74:             \"error\": self.error.dict() if self.error else None,\n75:             \"duration\": self.duration,\n76:             \"model_output_message\": self.model_output_message,\n77:             \"model_output\": self.model_output,\n78:             \"observations\": self.observations,\n79:             \"action_output\": make_json_serializable(self.action_output),\n80:         }\n81: \n82:     def to_messages(self, summary_mode: bool = False, show_model_input_messages: bool = False) -> List[Message]:\n83:         messages = []\n84:         if self.model_input_messages is not None and show_model_input_messages:\n85:             messages.append(Message(role=MessageRole.SYSTEM, content=self.model_input_messages))\n86:         if self.model_output is not None and not summary_mode:\n87:             messages.append(\n88:                 Message(role=MessageRole.ASSISTANT, content=[{\"type\": \"text\", \"text\": self.model_output.strip()}])\n89:             )\n90: \n91:         if self.tool_calls is not None:\n92:             messages.append(\n93:                 Message(\n94:                     role=MessageRole.TOOL_CALL,\n95:                     content=[\n96:                         {\n97:                             \"type\": \"text\",\n98:                             \"text\": \"Calling tools:\\n\" + str([tc.dict() for tc in self.tool_calls]),\n99:                         }\n100:                     ],\n101:                 )\n102:             )\n103: \n104:         if self.observations is not None:\n105:             messages.append(\n106:                 Message(\n107:                     role=MessageRole.TOOL_RESPONSE,\n108:                     content=[\n109:                         {\n110:                             \"type\": \"text\",\n111:                             \"text\": (f\"Call id: {self.tool_calls[0].id}\\n\" if self.tool_calls else \"\")\n112:                             + f\"Observation:\\n{self.observations}\",\n113:                         }\n114:                     ],\n115:                 )\n116:             )\n117:         if self.error is not None:\n118:             error_message = (\n119:                 \"Error:\\n\"\n120:                 + str(self.error)\n121:                 + \"\\nNow let's retry: take care not to repeat previous errors! If you have retried several times, try a completely different approach.\\n\"\n122:             )\n123:             message_content = f\"Call id: {self.tool_calls[0].id}\\n\" if self.tool_calls else \"\"\n124:             message_content += error_message\n125:             messages.append(\n126:                 Message(role=MessageRole.TOOL_RESPONSE, content=[{\"type\": \"text\", \"text\": message_content}])\n127:             )\n128: \n129:         if self.observations_images:\n130:             messages.append(\n131:                 Message(\n132:                     role=MessageRole.USER,\n133:                     content=[{\"type\": \"text\", \"text\": \"Here are the observed images:\"}]\n134:                     + [\n135:                         {\n136:                             \"type\": \"image\",\n137:                             \"image\": image,\n138:                         }\n139:                         for image in self.observations_images\n140:                     ],\n141:                 )\n142:             )\n143:         return messages\n144: \n145: \n146: @dataclass\n147: class PlanningStep(MemoryStep):\n148:     model_input_messages: List[Message]\n149:     model_output_message: ChatMessage\n150:     plan: str\n151: \n152:     def to_messages(self, summary_mode: bool, **kwargs) -> List[Message]:\n153:         if summary_mode:\n154:             return []\n155:         return [Message(role=MessageRole.ASSISTANT, content=[{\"type\": \"text\", \"text\": self.plan.strip()}])]\n156: \n157: \n158: @dataclass\n159: class TaskStep(MemoryStep):\n160:     task: str\n161:     task_images: List[\"PIL.Image.Image\"] | None = None\n162: \n163:     def to_messages(self, summary_mode: bool = False, **kwargs) -> List[Message]:\n164:         content = [{\"type\": \"text\", \"text\": f\"New task:\\n{self.task}\"}]\n165:         if self.task_images:\n166:             for image in self.task_images:\n167:                 content.append({\"type\": \"image\", \"image\": image})\n168: \n169:         return [Message(role=MessageRole.USER, content=content)]\n170: \n171: \n172: @dataclass\n173: class SystemPromptStep(MemoryStep):\n174:     system_prompt: str\n175: \n176:     def to_messages(self, summary_mode: bool = False, **kwargs) -> List[Message]:\n177:         if summary_mode:\n178:             return []\n179:         return [Message(role=MessageRole.SYSTEM, content=[{\"type\": \"text\", \"text\": self.system_prompt}])]\n180: \n181: \n182: @dataclass\n183: class FinalAnswerStep(MemoryStep):\n184:     final_answer: Any\n185: \n186: \n187: class AgentMemory:\n188:     def __init__(self, system_prompt: str):\n189:         self.system_prompt = SystemPromptStep(system_prompt=system_prompt)\n190:         self.steps: List[Union[TaskStep, ActionStep, PlanningStep]] = []\n191: \n192:     def reset(self):\n193:         self.steps = []\n194: \n195:     def get_succinct_steps(self) -> list[dict]:\n196:         return [\n197:             {key: value for key, value in step.dict().items() if key != \"model_input_messages\"} for step in self.steps\n198:         ]\n199: \n200:     def get_full_steps(self) -> list[dict]:\n201:         return [step.dict() for step in self.steps]\n202: \n203:     def replay(self, logger: AgentLogger, detailed: bool = False):\n204:         \"\"\"Prints a pretty replay of the agent's steps.\n205: \n206:         Args:\n207:             logger (AgentLogger): The logger to print replay logs to.\n208:             detailed (bool, optional): If True, also displays the memory at each step. Defaults to False.\n209:                 Careful: will increase log length exponentially. Use only for debugging.\n210:         \"\"\"\n211:         logger.console.log(\"Replaying the agent's steps:\")\n212:         for step in self.steps:\n213:             if isinstance(step, SystemPromptStep) and detailed:\n214:                 logger.log_markdown(title=\"System prompt\", content=step.system_prompt, level=LogLevel.ERROR)\n215:             elif isinstance(step, TaskStep):\n216:                 logger.log_task(step.task, \"\", level=LogLevel.ERROR)\n217:             elif isinstance(step, ActionStep):\n218:                 logger.log_rule(f\"Step {step.step_number}\", level=LogLevel.ERROR)\n219:                 if detailed:\n220:                     logger.log_messages(step.model_input_messages)\n221:                 logger.log_markdown(title=\"Agent output:\", content=step.model_output, level=LogLevel.ERROR)\n222:             elif isinstance(step, PlanningStep):\n223:                 logger.log_rule(\"Planning step\", level=LogLevel.ERROR)\n224:                 if detailed:\n225:                     logger.log_messages(step.model_input_messages, level=LogLevel.ERROR)\n226:                 logger.log_markdown(title=\"Agent output:\", content=step.facts + \"\\n\" + step.plan, level=LogLevel.ERROR)\n227: \n228: \n229: __all__ = [\"AgentMemory\"]\n\n(End of file - total 229 lines)\n</content>"
+          }
+        ]
+      },
+      "metrics": {
+        "prompt_tokens": 9810,
+        "completion_tokens": 47,
+        "cost_usd": 0.00076975,
+        "extra": {
+          "reasoning_tokens": 89
+        }
+      },
+      "llm_call_count": 1
+    },
+    {
+      "step_id": 5,
+      "timestamp": "2026-09-04T05:01:18.576000+00:00",
+      "source": "agent",
+      "model_name": "openrouter/z-ai/glm-5.3-flash",
+      "message": "The codebase is smolagents. The relevant place is `PlanningStep.to_messages` in src/smolagents/memory.py:152, which converts a plan into conversation messages fed back to the model. Let me check existing tests for this behavior.",
+      "reasoning_content": "Now I understand the codebase. The user wants:\n\n1. When a plan is presented (PlanningStep), a user-style message \"Now go on and execute this plan.\" should be shown after the plan content.\n2. It should appear exactly once after each plan.\n3. Only when the full conversation is being displayed (not in summary mode).\n\nLooking at `PlanningStep.to_messages` in memory.py (lines 152-155):\n\n```python\ndef to_messages(self, summary_mode: bool, **kwargs) -> List[Message]:\n    if summary_mode:\n        return []\n    return [Message(role=MessageRole.ASSISTANT, content=[{\"type\": \"text\", \"text\": self.plan.strip()}])]\n```\n\nThe fix: when not in summary mode, return the assistant plan message followed by a user message \"Now go on and execute this plan.\".\n\nWait \u2014 let me check the actual upstream smolagents repo. I recall that in smolagents there is indeed such a behavior. Let me check the upstream commit... Actually, in the upstream smolagents repository, there's a commit that adds exactly this. Let me check `PlanningStep.to_messages` upstream:\n\nUpstream smolagents memory.py (recent versions):\n\n```python\n@dataclass\nclass PlanningStep(MemoryStep):\n    model_input_messages: List[Message]\n    model_output_message: ChatMessage\n    plan: str\n\n    def to_messages(self, summary_mode: bool, **kwargs) -> List[Message]:\n        if summary_mode:\n            return []\n        return [\n            Message(role=MessageRole.ASSISTANT, content=[{\"type\": \"text\", \"text\": self.plan.strip()}]),\n            Message(role=MessageRole.USER, content=[{\"type\": \"text\", \"text\": \"Now go on and execute this plan.\"}]),\n        ]\n```\n\nYes! That's exactly the upstream change. In smolagents, commit \"Add follow-up message after plan\" or similar. The upstream code has:\n\n```python\n        return [\n            Message(role=MessageRole.ASSISTANT, content=[{\"type\": \"text\", \"text\": self.plan.strip()}]),\n            Message(role=MessageRole.USER, content=[{\"type\": \"text\", \"text\": \"Now go on and execute this plan.\"}]),\n        ]\n```\n\nSo the change is in `PlanningStep.to_messages` \u2014 add the user message after the assistant plan message, only when not in summary mode (since summary_mode returns [] early, it appears exactly once after each plan only in full conversation mode).\n\nThis satisfies all requirements:\n- Appears right after the plan content is displayed (in the message list fed back to the model).\n- Exactly once per plan (each PlanningStep produces it once).\n- Only in full conversation mode (summary_mode returns []).\n- Automatic and consistent (part of to_messages).\n\nLet me also check if there are tests related to this to update. Let me search tests for PlanningStep to_messages.",
+      "tool_calls": [
+        {
+          "tool_call_id": "call_01a06acb02dc78c3a816e901",
+          "function_name": "grep",
+          "arguments": {
+            "path": "/testbed/tests",
+            "pattern": "PlanningStep|to_messages|plan"
+          }
+        }
+      ],
+      "observation": {
+        "results": [
+          {
+            "source_call_id": "call_01a06acb02dc78c3a816e901",
+            "content": "Found 50 matches\n/testbed/tests/test_agents.py:\n  Line 35: from smolagents.memory import ActionStep, PlanningStep\n\n  Line 543:         assert \"Error raised in check\" in str(agent.write_memory_to_messages())\n\n  Line 662:     def test_planning_step(self, step, expected_messages_list):\n\n  Line 669:         planning_step = agent._create_planning_step(task, is_first_step=(step == 1), step=step)\n\n  Line 672:                 agent.prompt_templates[\"planning\"][\"initial_plan\"],\n\n  Line 677:                     answer_facts=planning_step.model_output_message.content,\n\n  Line 681:                 agent.prompt_templates[\"planning\"][\"update_plan_pre_messages\"], variables=dict(task=task)\n\n  Line 684:                 agent.prompt_templates[\"planning\"][\"update_plan_post_messages\"],\n\n  Line 689:                     facts_update=planning_step.model_output_message.content,\n\n  Line 698:         assert isinstance(planning_step, PlanningStep)\n\n  Line 700:         model_input_messages = planning_step.model_input_messages\n\n  Line 907:         agent.write_memory_to_messages = MagicMock(return_value=[{\"content\": \"Test summary\"}])\n\n  Line 1019:         assert agent.planning_interval == 2\n\n  Line 1088:         agent2 = CodeAgent.from_folder(tmp_path, planning_interval=5)\n\n  Line 1089:         assert agent2.planning_interval == 5  # Check that kwargs are used\n\n\n/testbed/tests/test_monitoring.py:\n  Line 133:             planning_interval=2,\n\n  Line 140:         plan_message = outputs[1]\n\n  Line 141:         self.assertEqual(plan_message.role, \"assistant\")\n\n  Line 142:         self.assertIn(\"Code:\", plan_message.content)\n\n\n/testbed/tests/test_memory.py:\n  Line 11:     PlanningStep,\n\n  Line 34:     def test_to_messages(self):\n\n  Line 37:             step.to_messages()\n\n  Line 40: def test_action_step_to_messages():\n\n  Line 57:     messages = action_step.to_messages()\n\n  Line 92: def test_action_step_to_messages_no_tool_calls_with_observations():\n\n  Line 107:     messages = action_step.to_messages()\n\n  Line 114: def test_planning_step_to_messages():\n\n  Line 115:     planning_step = PlanningStep(\n\n  Line 118:         plan=\"This is a plan.\",\n\n  Line 120:     messages = planning_step.to_messages(summary_mode=False)\n\n  Line 136: def test_task_step_to_messages():\n\n  Line 138:     messages = task_step.to_messages(summary_mode=False)\n\n  Line 158: def test_system_prompt_step_to_messages():\n\n  Line 160:     messages = system_prompt_step.to_messages(summary_mode=False)\n\n\n/testbed/tests/fixtures/agents.py:\n  Line 19:             \"planning\": {\n\n  Line 20:                 \"initial_facts\": \"dummy planning initial facts\",\n\n  Line 21:                 \"initial_plan\": \"dummy planning initial plan\",\n\n  Line 22:                 \"update_facts_pre_messages\": \"dummy planning update facts pre messages\",\n\n  Line 23:                 \"update_facts_post_messages\": \"dummy planning update facts post messages\",\n\n  Line 24:                 \"update_plan_pre_messages\": \"dummy planning update plan pre messages\",\n\n  Line 25:                 \"update_plan_post_messages\": \"dummy planning update plan post messages\",\n\n  Line 39:         \"planning_interval\": 2,\n\n  Line 60:             \"planning\": {\n\n  Line 61:                 \"initial_facts\": \"dummy planning initial facts\",\n\n  Line 62:                 \"initial_plan\": \"dummy planning initial plan\",\n\n  Line 63:                 \"update_facts_pre_messages\": \"dummy planning update facts pre messages\",\n\n  Line 64:                 \"update_facts_post_messages\": \"dummy planning update facts post messages\",\n\n  Line 65:                 \"update_plan_pre_messages\": \"dummy planning update plan pre messages\",\n\n  Line 66:                 \"update_plan_post_messages\": \"dummy planning update plan post messages\",\n\n  Line 80:         \"planning_interval\": 2,\n"
+          }
+        ]
+      },
+      "metrics": {
+        "prompt_tokens": 13104,
+        "completion_tokens": 75,
+        "cached_tokens": 4480,
+        "cost_usd": 0.00088525,
+        "extra": {
+          "reasoning_tokens": 610
+        }
+      },
+      "llm_call_count": 1
+    },
+    {
+      "step_id": 6,
+      "timestamp": "2026-09-04T05:01:24.956000+00:00",
+      "source": "agent",
+      "model_name": "openrouter/z-ai/glm-5.3-flash",
+      "message": "",
+      "tool_calls": [
+        {
+          "tool_call_id": "call_01a06acb062f74338526f019",
+          "function_name": "read",
+          "arguments": {
+            "filePath": "/testbed/tests/test_memory.py",
+            "limit": 60,
+            "offset": 110
+          }
+        }
+      ],
+      "observation": {
+        "results": [
+          {
+            "source_call_id": "call_01a06acb062f74338526f019",
+            "content": "<path>/testbed/tests/test_memory.py</path>\n<type>file</type>\n<content>\n110:     assert observation_message[\"role\"] == MessageRole.TOOL_RESPONSE\n111:     assert \"Observation:\\nThis is an observation.\" in observation_message[\"content\"][0][\"text\"]\n112: \n113: \n114: def test_planning_step_to_messages():\n115:     planning_step = PlanningStep(\n116:         model_input_messages=[Message(role=MessageRole.USER, content=\"Hello\")],\n117:         model_output_message=ChatMessage(role=MessageRole.ASSISTANT, content=\"Plan\"),\n118:         plan=\"This is a plan.\",\n119:     )\n120:     messages = planning_step.to_messages(summary_mode=False)\n121:     assert len(messages) == 1\n122:     for message in messages:\n123:         assert isinstance(message, dict)\n124:         assert \"role\" in message\n125:         assert \"content\" in message\n126:         assert isinstance(message[\"role\"], MessageRole)\n127:         assert message[\"role\"] == MessageRole.ASSISTANT\n128:         assert isinstance(message[\"content\"], list)\n129:         assert len(message[\"content\"]) == 1\n130:         for content in message[\"content\"]:\n131:             assert isinstance(content, dict)\n132:             assert \"type\" in content\n133:             assert \"text\" in content\n134: \n135: \n136: def test_task_step_to_messages():\n137:     task_step = TaskStep(task=\"This is a task.\", task_images=[\"task_image1.png\"])\n138:     messages = task_step.to_messages(summary_mode=False)\n139:     assert len(messages) == 1\n140:     for message in messages:\n141:         assert isinstance(message, dict)\n142:         assert \"role\" in message\n143:         assert \"content\" in message\n144:         assert isinstance(message[\"role\"], MessageRole)\n145:         assert message[\"role\"] == MessageRole.USER\n146:         assert isinstance(message[\"content\"], list)\n147:         assert len(message[\"content\"]) == 2\n148:         text_content = message[\"content\"][0]\n149:         assert isinstance(text_content, dict)\n150:         assert \"type\" in text_content\n151:         assert \"text\" in text_content\n152:         for image_content in message[\"content\"][1:]:\n153:             assert isinstance(image_content, dict)\n154:             assert \"type\" in image_content\n155:             assert \"image\" in image_content\n156: \n157: \n158: def test_system_prompt_step_to_messages():\n159:     system_prompt_step = SystemPromptStep(system_prompt=\"This is a system prompt.\")\n160:     messages = system_prompt_step.to_messages(summary_mode=False)\n161:     assert len(messages) == 1\n162:     for message in messages:\n163:         assert isinstance(message, dict)\n164:         assert \"role\" in message\n165:         assert \"content\" in message\n166:         assert isinstance(message[\"role\"], MessageRole)\n167:         assert message[\"role\"] == MessageRole.SYSTEM\n168:         assert isinstance(message[\"content\"], list)\n169:         assert len(message[\"content\"]) == 1\n\n(Showing lines 110-169 of 173. Use offset=170 to continue.)\n</content>"
+          }
+        ]
+      },
+      "metrics": {
+        "prompt_tokens": 14671,
+        "completion_tokens": 28,
+        "cached_tokens": 8960,
+        "cost_usd": 0.000569725
+      },
+      "llm_call_count": 1
+    },
+    {
+      "step_id": 7,
+      "timestamp": "2026-09-04T05:01:25.779000+00:00",
+      "source": "agent",
+      "model_name": "openrouter/z-ai/glm-5.3-flash",
+      "message": "Now I'll implement the change in `PlanningStep.to_messages`:",
+      "reasoning_content": "Now I'll make the change in `PlanningStep.to_messages` in memory.py: add a USER message \"Now go on and execute this plan.\" after the assistant plan message, only in non-summary mode. Since summary_mode returns [] early, the user message only appears in full-conversation mode, exactly once per plan.\n\nThen update the test in tests/test_memory.py to reflect the new behavior.",
+      "tool_calls": [
+        {
+          "tool_call_id": "call_01a06acb0d127b3398b56b8d",
+          "function_name": "edit",
+          "arguments": {
+            "filePath": "/testbed/src/smolagents/memory.py",
+            "newString": "def to_messages(self, summary_mode: bool, **kwargs) -> List[Message]:\n        if summary_mode:\n            return []\n        return [\n            Message(role=MessageRole.ASSISTANT, content=[{\"type\": \"text\", \"text\": self.plan.strip()}]),\n            Message(role=MessageRole.USER, content=[{\"type\": \"text\", \"text\": \"Now go on and execute this plan.\"}]),\n        ]",
+            "oldString": "def to_messages(self, summary_mode: bool, **kwargs) -> List[Message]:\n        if summary_mode:\n            return []\n        return [Message(role=MessageRole.ASSISTANT, content=[{\"type\": \"text\", \"text\": self.plan.strip()}])]"
+          }
+        }
+      ],
+      "observation": {
+        "results": [
+          {
+            "source_call_id": "call_01a06acb0d127b3398b56b8d",
+            "content": "Edit applied successfully."
+          }
+        ]
+      },
+      "metrics": {
+        "prompt_tokens": 15400,
+        "completion_tokens": 188,
+        "cached_tokens": 8960,
+        "cost_usd": 0.0006844,
+        "extra": {
+          "reasoning_tokens": 80
+        }
+      },
+      "llm_call_count": 1
+    },
+    {
+      "step_id": 8,
+      "timestamp": "2026-09-04T05:01:28.577000+00:00",
+      "source": "agent",
+      "model_name": "openrouter/z-ai/glm-5.3-flash",
+      "message": "Now update the test to verify the new behavior:",
+      "tool_calls": [
+        {
+          "tool_call_id": "call_01a06acb149671f2af0882d9",
+          "function_name": "edit",
+          "arguments": {
+            "filePath": "/testbed/tests/test_memory.py",
+            "newString": "def test_planning_step_to_messages():\n    planning_step = PlanningStep(\n        model_input_messages=[Message(role=MessageRole.USER, content=\"Hello\")],\n        model_output_message=ChatMessage(role=MessageRole.ASSISTANT, content=\"Plan\"),\n        plan=\"This is a plan.\",\n    )\n    messages = planning_step.to_messages(summary_mode=False)\n    assert len(messages) == 2\n    for message in messages:\n        assert isinstance(message, dict)\n        assert \"role\" in message\n        assert \"content\" in message\n        assert isinstance(message[\"role\"], MessageRole)\n        assert message[\"role\"] in (MessageRole.ASSISTANT, MessageRole.USER)\n        assert isinstance(message[\"content\"], list)\n        assert len(message[\"content\"]) == 1\n        for content in message[\"content\"]:\n            assert isinstance(content, dict)\n            assert \"type\" in content\n            assert \"text\" in content\n    assert messages[0][\"role\"] == MessageRole.ASSISTANT\n    assert messages[0][\"content\"][0][\"text\"] == \"This is a plan.\"\n    assert messages[1][\"role\"] == MessageRole.USER\n    assert messages[1][\"content\"][0][\"text\"] == \"Now go on and execute this plan.\"\n\n    # In summary mode, no messages should be returned\n    assert planning_step.to_messages(summary_mode=True) == []",
+            "oldString": "def test_planning_step_to_messages():\n    planning_step = PlanningStep(\n        model_input_messages=[Message(role=MessageRole.USER, content=\"Hello\")],\n        model_output_message=ChatMessage(role=MessageRole.ASSISTANT, content=\"Plan\"),\n        plan=\"This is a plan.\",\n    )\n    messages = planning_step.to_messages(summary_mode=False)\n    assert len(messages) == 1\n    for message in messages:\n        assert isinstance(message, dict)\n        assert \"role\" in message\n        assert \"content\" in message\n        assert isinstance(message[\"role\"], MessageRole)\n        assert message[\"role\"] == MessageRole.ASSISTANT\n        assert isinstance(message[\"content\"], list)\n        assert len(message[\"content\"]) == 1\n        for content in message[\"content\"]:\n            assert isinstance(content, dict)\n            assert \"type\" in content\n            assert \"text\" in content"
+          }
+        }
+      ],
+      "observation": {
+        "results": [
+          {
+            "source_call_id": "call_01a06acb149671f2af0882d9",
+            "content": "Edit applied successfully."
+          }
+        ]
+      },
+      "metrics": {
+        "prompt_tokens": 15674,
+        "completion_tokens": 508,
+        "cached_tokens": 8960,
+        "cost_usd": 0.00076495
+      },
+      "llm_call_count": 1
+    },
+    {
+      "step_id": 9,
+      "timestamp": "2026-09-04T05:01:33.461000+00:00",
+      "source": "agent",
+      "model_name": "openrouter/z-ai/glm-5.3-flash",
+      "message": "",
+      "tool_calls": [
+        {
+          "tool_call_id": "call_01a06acb24137ff0af29482e",
+          "function_name": "bash",
+          "arguments": {
+            "command": "python -m pytest tests/test_memory.py -q 2>&1 | tail -5",
+            "workdir": "/testbed"
+          }
+        }
+      ],
+      "observation": {
+        "results": [
+          {
+            "source_call_id": "call_01a06acb24137ff0af29482e",
+            "content": "ImportError while loading conftest '/testbed/tests/conftest.py'.\ntests/conftest.py:5: in <module>\n    from smolagents.agents import MultiStepAgent\nE   ModuleNotFoundError: No module named 'smolagents'\n"
+          }
+        ]
+      },
+      "metrics": {
+        "prompt_tokens": 16190,
+        "completion_tokens": 36,
+        "cached_tokens": 8960,
+        "cost_usd": 0.00068565
+      },
+      "llm_call_count": 1
+    },
+    {
+      "step_id": 10,
+      "timestamp": "2026-09-04T05:01:35.574000+00:00",
+      "source": "agent",
+      "model_name": "openrouter/z-ai/glm-5.3-flash",
+      "message": "",
+      "tool_calls": [
+        {
+          "tool_call_id": "call_01a06acb2c3f78909ef375c7",
+          "function_name": "bash",
+          "arguments": {
+            "command": "pip install -e . -q 2>&1 | tail -2 && python -m pytest tests/test_memory.py -q 2>&1 | tail -5",
+            "workdir": "/testbed"
+          }
+        }
+      ],
+      "observation": {
+        "results": [
+          {
+            "source_call_id": "call_01a06acb2c3f78909ef375c7",
+            "content": "[notice] A new release of pip is available: 23.0.1 -> 26.2.1\n[notice] To update, run: pip install --upgrade pip\n\n============================== slowest durations ===============================\n\n(27 durations < 0.005s hidden.  Use -vv to show these durations.)\n============================== 9 passed in 0.05s ===============================\n"
+          }
+        ]
+      },
+      "metrics": {
+        "prompt_tokens": 16283,
+        "completion_tokens": 52,
+        "cached_tokens": 8960,
+        "cost_usd": 0.000696625
+      },
+      "llm_call_count": 1
+    },
+    {
+      "step_id": 11,
+      "timestamp": "2026-09-04T05:01:48.542000+00:00",
+      "source": "agent",
+      "model_name": "openrouter/z-ai/glm-5.3-flash",
+      "message": "Memory tests pass. Now run the planning-related agent and monitoring tests to ensure nothing broke:",
+      "reasoning_content": "Memory tests pass. Now run the agents tests that involve planning to make sure nothing broke (test_planning_step, test_monitoring planning tests).",
+      "tool_calls": [
+        {
+          "tool_call_id": "call_01a06acb606d76a0bd8d54e7",
+          "function_name": "bash",
+          "arguments": {
+            "command": "python -m pytest tests/test_agents.py::TestPlanningStep -q 2>&1 | tail -3; python -m pytest tests/test_memory.py tests/test_monitoring.py -q 2>&1 | tail -3",
+            "workdir": "/testbed"
+          }
+        }
+      ],
+      "observation": {
+        "results": [
+          {
+            "source_call_id": "call_01a06acb606d76a0bd8d54e7",
+            "content": "collected 0 items\n\n============================ no tests ran in 0.09s =============================\n\n(41 durations < 0.005s hidden.  Use -vv to show these durations.)\n======================== 16 passed, 1 warning in 3.98s =========================\n"
+          }
+        ]
+      },
+      "metrics": {
+        "prompt_tokens": 16420,
+        "completion_tokens": 82,
+        "cached_tokens": 8960,
+        "cost_usd": 0.00072165,
+        "extra": {
+          "reasoning_tokens": 29
+        }
+      },
+      "llm_call_count": 1
+    },
+    {
+      "step_id": 12,
+      "timestamp": "2026-09-04T05:01:55.371000+00:00",
+      "source": "agent",
+      "model_name": "openrouter/z-ai/glm-5.3-flash",
+      "message": "",
+      "tool_calls": [
+        {
+          "tool_call_id": "call_01a06acb79a47bd2a32f2896",
+          "function_name": "bash",
+          "arguments": {
+            "command": "python -m pytest tests/test_agents.py -q -k \"planning\" 2>&1 | tail -3",
+            "workdir": "/testbed"
+          }
+        }
+      ],
+      "observation": {
+        "results": [
+          {
+            "source_call_id": "call_01a06acb79a47bd2a32f2896",
+            "content": "\n(4 durations < 0.005s hidden.  Use -vv to show these durations.)\n======================= 2 passed, 52 deselected in 0.08s =======================\n"
+          }
+        ]
+      },
+      "metrics": {
+        "prompt_tokens": 16593,
+        "completion_tokens": 42,
+        "cached_tokens": 8960,
+        "cost_usd": 0.000717375
+      },
+      "llm_call_count": 1
+    },
+    {
+      "step_id": 13,
+      "timestamp": "2026-09-04T05:01:57.067000+00:00",
+      "source": "agent",
+      "model_name": "openrouter/z-ai/glm-5.3-flash",
+      "message": "",
+      "reasoning_content": "All planning tests pass. Let me also verify the full test_agents.py passes (or at least the parts touching memory replay). Actually, running the full test suite may take a while and require model deps. Let me run test_agents.py fully quickly to see.\n\nAlso, check `replay` in memory.py references `step.facts` \u2014 wait, line 226: `step.facts + \"\\n\" + step.plan` \u2014 but PlanningStep doesn't have a `facts` field! That's a pre-existing bug, unrelated to my change. Let me check... Actually in memory.py, PlanningStep has fields: model_input_messages, model_output_message, plan. There's no `facts` field. So `replay` would crash on planning steps. But that's pre-existing and not part of this request. Hmm, actually wait \u2014 let me check the upstream repo. In upstream smolagents at some point PlanningStep had `facts` and `plan`. Here it seems the refactor removed `facts` (commit \"Refactor step yielding during streaming run to log PlanningSteps (#1083)\"). The replay method might be outdated, but that's unrelated to the user's request. I shouldn't touch it unless it breaks tests. Let me check if any test covers replay with planning steps... Let me just run the full test suite for memory/agents/monitoring to be safe.",
+      "tool_calls": [
+        {
+          "tool_call_id": "call_01a06acb8b607ce0b72e720f",
+          "function_name": "bash",
+          "arguments": {
+            "command": "python -m pytest tests/test_agents.py tests/test_memory.py tests/test_monitoring.py -q 2>&1 | tail -3",
+            "workdir": "/testbed"
+          }
+        }
+      ],
+      "observation": {
+        "results": [
+          {
+            "source_call_id": "call_01a06acb8b607ce0b72e720f",
+            "content": "\n(161 durations < 0.005s hidden.  Use -vv to show these durations.)\n======================== 70 passed, 1 warning in 36.93s ========================\n"
+          }
+        ]
+      },
+      "metrics": {
+        "prompt_tokens": 16679,
+        "completion_tokens": 45,
+        "cached_tokens": 8960,
+        "cost_usd": 0.000795325,
+        "extra": {
+          "reasoning_tokens": 283
+        }
+      },
+      "llm_call_count": 1
+    },
+    {
+      "step_id": 14,
+      "timestamp": "2026-09-04T05:02:40.931000+00:00",
+      "source": "agent",
+      "model_name": "openrouter/z-ai/glm-5.3-flash",
+      "message": "All 70 tests pass. Final diff:",
+      "reasoning_content": "All 70 tests pass. Let me do a final review of the change with git diff.",
+      "tool_calls": [
+        {
+          "tool_call_id": "call_01a06acc2dd07a23a27aecb0",
+          "function_name": "bash",
+          "arguments": {
+            "command": "git diff",
+            "workdir": "/testbed"
+          }
+        }
+      ],
+      "observation": {
+        "results": [
+          {
+            "source_call_id": "call_01a06acc2dd07a23a27aecb0",
+            "content": "diff --git a/src/smolagents/memory.py b/src/smolagents/memory.py\nindex 34505d4..086b3ee 100644\n--- a/src/smolagents/memory.py\n+++ b/src/smolagents/memory.py\n@@ -152,7 +152,10 @@ class PlanningStep(MemoryStep):\n     def to_messages(self, summary_mode: bool, **kwargs) -> List[Message]:\n         if summary_mode:\n             return []\n-        return [Message(role=MessageRole.ASSISTANT, content=[{\"type\": \"text\", \"text\": self.plan.strip()}])]\n+        return [\n+            Message(role=MessageRole.ASSISTANT, content=[{\"type\": \"text\", \"text\": self.plan.strip()}]),\n+            Message(role=MessageRole.USER, content=[{\"type\": \"text\", \"text\": \"Now go on and execute this plan.\"}]),\n+        ]\n \n \n @dataclass\ndiff --git a/tests/test_memory.py b/tests/test_memory.py\nindex b7a746e..c3e1e7c 100644\n--- a/tests/test_memory.py\n+++ b/tests/test_memory.py\n@@ -118,19 +118,26 @@ def test_planning_step_to_messages():\n         plan=\"This is a plan.\",\n     )\n     messages = planning_step.to_messages(summary_mode=False)\n-    assert len(messages) == 1\n+    assert len(messages) == 2\n     for message in messages:\n         assert isinstance(message, dict)\n         assert \"role\" in message\n         assert \"content\" in message\n         assert isinstance(message[\"role\"], MessageRole)\n-        assert message[\"role\"] == MessageRole.ASSISTANT\n+        assert message[\"role\"] in (MessageRole.ASSISTANT, MessageRole.USER)\n         assert isinstance(message[\"content\"], list)\n         assert len(message[\"content\"]) == 1\n         for content in message[\"content\"]:\n             assert isinstance(content, dict)\n             assert \"type\" in content\n             assert \"text\" in content\n+    assert messages[0][\"role\"] == MessageRole.ASSISTANT\n+    assert messages[0][\"content\"][0][\"text\"] == \"This is a plan.\"\n+    assert messages[1][\"role\"] == MessageRole.USER\n+    assert messages[1][\"content\"][0][\"text\"] == \"Now go on and execute this plan.\"\n+\n+    # In summary mode, no messages should be returned\n+    assert planning_step.to_messages(summary_mode=True) == []\n \n \n def test_task_step_to_messages():\n"
+          }
+        ]
+      },
+      "metrics": {
+        "prompt_tokens": 17050,
+        "completion_tokens": 29,
+        "cost_usd": 0.00129075,
+        "extra": {
+          "reasoning_tokens": 19
+        }
+      },
+      "llm_call_count": 1
+    },
+    {
+      "step_id": 15,
+      "timestamp": "2026-09-04T05:02:48.209000+00:00",
+      "source": "agent",
+      "model_name": "openrouter/z-ai/glm-5.3-flash",
+      "message": "Done. The behavior is implemented in `PlanningStep.to_messages` (src/smolagents/memory.py:152):\n\n- After each plan's assistant message, a user-role message `\"Now go on and execute this plan.\"` is automatically appended \u2014 exactly once per plan, every time it's rendered into the conversation.\n- In summary mode the step returns `[]`, so the follow-up message never appears there.\n- Since this lives in the memory message-conversion layer, it applies consistently to both initial and updated plans whenever the full conversation is written back to the model.\n\nUpdated `test_planning_step_to_messages` to assert the new message and summary-mode behavior; all 70 agent/memory/monitoring tests pass.",
+      "reasoning_content": "Done. The change is complete and tests pass. Summarize concisely.",
+      "metrics": {
+        "prompt_tokens": 17642,
+        "completion_tokens": 146,
+        "cached_tokens": 8960,
+        "cost_usd": 0.0008263,
+        "extra": {
+          "reasoning_tokens": 17
+        }
+      },
+      "llm_call_count": 1
+    }
+  ],
+  "final_metrics": {
+    "total_prompt_tokens": 200186,
+    "total_completion_tokens": 1350,
+    "total_cached_tokens": 85120,
+    "total_cost_usd": 0.010568000000000001,
+    "total_steps": 15
+  }
+}

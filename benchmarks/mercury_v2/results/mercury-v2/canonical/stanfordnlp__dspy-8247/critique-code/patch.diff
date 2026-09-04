@@ -1,0 +1,18 @@
+diff --git a/dspy/predict/predict.py b/dspy/predict/predict.py
+index 9f78ca804..14bf51119 100644
+--- a/dspy/predict/predict.py
++++ b/dspy/predict/predict.py
+@@ -97,6 +97,13 @@ class Predict(Module, Parameter):
+         demos = kwargs.pop("demos", self.demos)
+         config = dict(**self.config, **kwargs.pop("config", {}))
+ 
++        # If the user provided a predicted output in the OpenAI format, move it to the LM config.
++        # Only treat `prediction` specially when it matches the expected structure:
++        # a dict with `type == "content"` and a `content` key.
++        prediction = kwargs.get("prediction")
++        if isinstance(prediction, dict) and prediction.get("type") == "content" and "content" in prediction:
++            config["prediction"] = kwargs.pop("prediction")
++
+         # Get the right LM to use.
+         lm = kwargs.pop("lm", self.lm) or settings.lm
+         assert isinstance(lm, BaseLM), "No LM is loaded."

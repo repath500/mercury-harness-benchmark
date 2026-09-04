@@ -1,0 +1,65 @@
+diff --git a/src/smolagents/memory.py b/src/smolagents/memory.py
+index 34505d4..c7ec4f1 100644
+--- a/src/smolagents/memory.py
++++ b/src/smolagents/memory.py
+@@ -152,7 +152,19 @@ class PlanningStep(MemoryStep):
+     def to_messages(self, summary_mode: bool, **kwargs) -> List[Message]:
+         if summary_mode:
+             return []
+-        return [Message(role=MessageRole.ASSISTANT, content=[{"type": "text", "text": self.plan.strip()}])]
++        return [
++            Message(role=MessageRole.ASSISTANT, content=[{"type": "text", "text": self.plan.strip()}]),
++            Message(
++                role=MessageRole.USER,
++                content=[
++                    {
++                        "type": "text",
++                        "text": "Now go on and execute this plan.",
++                    }
++                ],
++            ),
++            # This second message creates a role change to prevent models from simply continuing the plan message
++        ]
+ 
+ 
+ @dataclass
+diff --git a/tests/test_memory.py b/tests/test_memory.py
+index b7a746e..ab81273 100644
+--- a/tests/test_memory.py
++++ b/tests/test_memory.py
+@@ -118,19 +118,33 @@ def test_planning_step_to_messages():
+         plan="This is a plan.",
+     )
+     messages = planning_step.to_messages(summary_mode=False)
+-    assert len(messages) == 1
++    assert len(messages) == 2
+     for message in messages:
+         assert isinstance(message, dict)
+         assert "role" in message
+         assert "content" in message
+         assert isinstance(message["role"], MessageRole)
+-        assert message["role"] == MessageRole.ASSISTANT
+         assert isinstance(message["content"], list)
+         assert len(message["content"]) == 1
+         for content in message["content"]:
+             assert isinstance(content, dict)
+             assert "type" in content
+             assert "text" in content
++    # The plan is displayed as an assistant message...
++    assert messages[0]["role"] == MessageRole.ASSISTANT
++    assert messages[0]["content"][0]["text"] == "This is a plan."
++    # ...immediately followed by exactly one user message instructing to execute it.
++    assert messages[1]["role"] == MessageRole.USER
++    assert messages[1]["content"][0]["text"] == "Now go on and execute this plan."
++
++
++def test_planning_step_to_messages_summary_mode():
++    planning_step = PlanningStep(
++        model_input_messages=[Message(role=MessageRole.USER, content="Hello")],
++        model_output_message=ChatMessage(role=MessageRole.ASSISTANT, content="Plan"),
++        plan="This is a plan.",
++    )
++    assert planning_step.to_messages(summary_mode=True) == []
+ 
+ 
+ def test_task_step_to_messages():

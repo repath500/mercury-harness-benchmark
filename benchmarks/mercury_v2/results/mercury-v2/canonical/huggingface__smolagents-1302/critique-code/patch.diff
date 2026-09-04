@@ -1,0 +1,24 @@
+diff --git a/src/smolagents/local_python_executor.py b/src/smolagents/local_python_executor.py
+index 0bfa53b..f8759bf 100644
+--- a/src/smolagents/local_python_executor.py
++++ b/src/smolagents/local_python_executor.py
+@@ -1495,8 +1495,9 @@ class LocalPythonExecutor(PythonExecutor):
+         self,
+         additional_authorized_imports: list[str],
+         max_print_outputs_length: int | None = None,
++        additional_functions: dict[str, Callable] | None = None,
+     ):
+-        self.custom_tools = {}
++        self.custom_tools = additional_functions if additional_functions is not None else {}
+         self.state = {"__name__": "__main__"}
+         self.max_print_outputs_length = max_print_outputs_length
+         if max_print_outputs_length is None:
+@@ -1522,7 +1523,7 @@ class LocalPythonExecutor(PythonExecutor):
+         self.state.update(variables)
+ 
+     def send_tools(self, tools: dict[str, Tool]):
+-        self.static_tools = {**tools, **BASE_PYTHON_TOOLS.copy()}
++        self.static_tools = {**tools, **BASE_PYTHON_TOOLS.copy(), **self.custom_tools}
+ 
+ 
+ __all__ = ["evaluate_python_code", "LocalPythonExecutor"]

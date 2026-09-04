@@ -1,0 +1,67 @@
+diff --git a/dspy/primitives/tool.py b/dspy/primitives/tool.py
+index 94817397e..3fe11e6d9 100644
+--- a/dspy/primitives/tool.py
++++ b/dspy/primitives/tool.py
+@@ -58,6 +58,7 @@ class Tool:
+         self.arg_types = arg_types
+         self.arg_desc = arg_desc
+ 
++        self.accepts_any_kwargs = False
+         self._parse_function(func, arg_desc)
+ 
+     def _resolve_pydantic_schema(self, model: type[BaseModel]) -> dict:
+@@ -106,9 +107,14 @@ class Tool:
+         # Build a dictionary of arg name -> type (defaulting to Any when missing)
+         hints = {param_name: available_hints.get(param_name, Any) for param_name in sig.parameters.keys()}
+         default_values = {param_name: sig.parameters[param_name].default for param_name in sig.parameters.keys()}
++        self.accepts_any_kwargs = any(
++            param.kind == inspect.Parameter.VAR_KEYWORD for param in sig.parameters.values()
++        )
+ 
+         # Process each argument's type to generate its JSON schema.
+         for k, v in hints.items():
++            if sig.parameters[k].kind == inspect.Parameter.VAR_KEYWORD:
++                continue
+             arg_types[k] = v
+             if k == "return":
+                 continue
+@@ -147,7 +153,10 @@ class Tool:
+     def __call__(self, **kwargs):
+         for k, v in kwargs.items():
+             if k not in self.args:
+-                raise ValueError(f"Arg {k} is not in the tool's args.")
++                if not self.accepts_any_kwargs:
++                    raise ValueError(f"Arg {k} is not in the tool's args.")
++                continue
++
+             try:
+                 instance = v.model_dump() if hasattr(v, "model_dump") else v
+                 type_str = self.args[k].get("type")
+diff --git a/tests/primitives/test_tool.py b/tests/primitives/test_tool.py
+index ce6b3f441..9c45e37c3 100644
+--- a/tests/primitives/test_tool.py
++++ b/tests/primitives/test_tool.py
+@@ -134,6 +134,23 @@ def test_tool_callable():
+     assert result == "hello 42"
+ 
+ 
++def test_tool_with_kwargs_callable():
++    def foo(c=1, d=1, **kwargs):
++        return c * d
++
++    tool = Tool(foo)
++    assert tool.args == {"c": {"default": 1}, "d": {"default": 1}}
++    assert tool(c=5, d=4) == 20
++
++
++def test_tool_with_kwargs_accepts_unknown_args():
++    def foo(**kwargs):
++        return kwargs
++
++    tool = Tool(foo)
++    assert tool(c=5, d=4) == {"c": 5, "d": 4}
++
++
+ def test_tool_with_pydantic_callable():
+     tool = Tool(dummy_with_pydantic)
+     model = DummyModel(field1="test", field2=123)

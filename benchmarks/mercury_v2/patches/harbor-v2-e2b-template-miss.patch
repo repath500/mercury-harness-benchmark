@@ -1,0 +1,20 @@
+diff --git a/src/harbor/environments/e2b.py b/src/harbor/environments/e2b.py
+index c45f105..e1d9164 100644
+--- a/src/harbor/environments/e2b.py
++++ b/src/harbor/environments/e2b.py
+@@ -248,7 +248,14 @@ class E2BEnvironment(BaseEnvironment):
+         await self._sandbox.update_network(self._sandbox_network_update(network_policy))
+ 
+     async def _does_template_exist(self) -> bool:
+-        return await AsyncTemplate.alias_exists(self._template_name)
++        try:
++            return await AsyncTemplate.alias_exists(self._template_name)
++        except Exception as exc:
++            # A new content-hash alias returns HTTP 404 before its first build.
++            # Treat only that response as a cache miss; surface all other errors.
++            if "404" in str(exc):
++                return False
++            raise
+ 
+     @override
+     async def start(self, force_build: bool):
